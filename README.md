@@ -1,12 +1,12 @@
-# capiscio-mcp
+# CapiscIO MCP Guard
 
-Trust badges for MCP tool calls.
+Tool-level security for Model Context Protocol servers.
 
 [![PyPI version](https://badge.fury.io/py/capiscio-mcp.svg)](https://badge.fury.io/py/capiscio-mcp)
 [![Python 3.10+](https://img.shields.io/badge/python-3.10+-blue.svg)](https://www.python.org/downloads/)
 [![License](https://img.shields.io/badge/License-Apache%202.0-blue.svg)](https://opensource.org/licenses/Apache-2.0)
 
-**capiscio-mcp** provides trust badges and identity verification for [Model Context Protocol (MCP)](https://modelcontextprotocol.io) tool calls. It implements:
+**MCP Guard** provides trust badges and identity verification for [Model Context Protocol (MCP)](https://modelcontextprotocol.io) tool calls. It implements:
 
 - **RFC-006**: MCP Tool Authority and Evidence
 - **RFC-007**: MCP Server Identity Disclosure and Verification
@@ -21,7 +21,7 @@ pip install capiscio-mcp
 pip install capiscio-mcp[mcp]
 ```
 
-## Why capiscio-mcp?
+## Why MCP Guard?
 
 MCP servers expose powerful tools to autonomous agents—file systems, databases, APIs. But MCP itself doesn't define how to:
 
@@ -29,7 +29,7 @@ MCP servers expose powerful tools to autonomous agents—file systems, databases
 - **Authorize** whether that agent should have access
 - **Audit** what happened for post-incident review
 
-capiscio-mcp solves this with:
+MCP Guard solves this with:
 
 | Feature | Description |
 |---------|-------------|
@@ -139,7 +139,7 @@ async with CapiscioMCPClient(
 
 ## Core Connection Modes
 
-capiscio-mcp connects to capiscio-core for cryptographic operations:
+MCP Guard connects to capiscio-core for cryptographic operations:
 
 ### Embedded Mode (Default)
 
