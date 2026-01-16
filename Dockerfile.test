@@ -1,0 +1,40 @@
+# Dockerfile for capiscio-mcp-python E2E tests
+#
+# This Dockerfile creates a test environment for running
+# MCP E2E tests with the capiscio-mcp-python SDK.
+#
+# Usage:
+#   docker build -f Dockerfile.test -t capiscio-mcp-test .
+#   docker run -it capiscio-mcp-test pytest tests/
+
+FROM python:3.11-slim
+
+# Install system dependencies
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    git \
+    curl \
+    && rm -rf /var/lib/apt/lists/*
+
+# Set working directory
+WORKDIR /workspace
+
+# Copy package files for pip install
+COPY pyproject.toml README.md ./
+COPY capiscio_mcp/ ./capiscio_mcp/
+
+# Install package with all dependencies (including mcp optional)
+RUN pip install --no-cache-dir -e ".[dev,mcp]"
+
+# Install additional test utilities
+RUN pip install --no-cache-dir \
+    pytest-asyncio \
+    requests \
+    python-jose \
+    base58
+
+# Set environment variables
+ENV PYTHONPATH=/workspace
+ENV PYTHONUNBUFFERED=1
+
+# Default command - keep container running for docker exec
+CMD ["sleep", "infinity"]
