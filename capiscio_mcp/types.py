@@ -71,19 +71,21 @@ class DenyReason(str, Enum):
 
 class TrustLevel(IntEnum):
     """
-    Trust levels per RFC-002.
+    Trust levels per RFC-002 v1.4.
     
-    - LEVEL_0: Self-signed (did:key issuer)
-    - LEVEL_1: Domain Validated (DV)
-    - LEVEL_2: Organization Validated (OV)
-    - LEVEL_3: Extended Validation (EV)
-    - LEVEL_4: Continuous Validation (CV)
+    - LEVEL_0: Self-Signed (SS) - did:key issuer, no external validation
+    - LEVEL_1: Registered (REG) - Account registration with CapiscIO Registry
+    - LEVEL_2: Domain Validated (DV) - DNS/HTTP challenge proving domain control
+    - LEVEL_3: Organization Validated (OV) - DUNS/legal entity verification
+    - LEVEL_4: Extended Validated (EV) - Manual review + legal agreement
+    
+    See: https://docs.capisc.io/rfcs/002-trust-badge/#5-trust-levels
     """
-    LEVEL_0 = 0  # Self-signed
-    LEVEL_1 = 1  # DV
-    LEVEL_2 = 2  # OV
-    LEVEL_3 = 3  # EV
-    LEVEL_4 = 4  # CV
+    LEVEL_0 = 0  # Self-Signed (SS)
+    LEVEL_1 = 1  # Registered (REG)
+    LEVEL_2 = 2  # Domain Validated (DV)
+    LEVEL_3 = 3  # Organization Validated (OV)
+    LEVEL_4 = 4  # Extended Validated (EV)
 
 
 # =============================================================================

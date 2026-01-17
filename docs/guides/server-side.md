@@ -97,12 +97,12 @@ async def read_file(path: str) -> str:
 
 @guard(min_trust_level=3)
 async def write_file(path: str, content: str) -> None:
-    """High-risk: Write files (EV required)."""
+    """High-risk: Write files (OV required)."""
     pass
 
 @guard(min_trust_level=4)
 async def execute_command(cmd: str) -> str:
-    """Critical: Execute shell commands (CV required)."""
+    """Critical: Execute shell commands (EV required)."""
     pass
 ```
 

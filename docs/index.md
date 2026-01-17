@@ -22,7 +22,7 @@ MCP Guard solves this with:
 | **@guard decorator** | Protect tools with trust-level requirements |
 | **Evidence logging** | Cryptographic audit trail for every invocation |
 | **Server identity** | Verify MCP servers before connecting |
-| **Trust levels** | 0 (self-signed) → 4 (continuous validation) |
+| **Trust levels** | 0 (self-signed) → 4 (extended validation) |
 
 ## Quick Example
 
@@ -54,13 +54,15 @@ if result.state == ServerState.VERIFIED_PRINCIPAL:
 
 ## Trust Levels
 
-| Level | Name | Description |
-|-------|------|-------------|
-| 0 | Self-Signed | `did:key` issuer, cryptographic identity only |
-| 1 | Domain Validated (DV) | Domain ownership verified |
-| 2 | Organization Validated (OV) | Organization identity verified |
-| 3 | Extended Validation (EV) | Legal entity verification |
-| 4 | Continuous Validation (CV) | Runtime attestation |
+Per RFC-002 v1.4:
+
+| Level | Name | Validation | Use Case |
+|-------|------|------------|----------|
+| 0 | Self-Signed (SS) | None, `did:key` issuer | Local dev, testing, demos |
+| 1 | Registered (REG) | Account registration | Development, internal agents |
+| 2 | Domain Validated (DV) | DNS/HTTP challenge | Production, B2B agents |
+| 3 | Organization Validated (OV) | DUNS/legal entity | High-trust production |
+| 4 | Extended Validated (EV) | Manual review + legal | Regulated industries |
 
 ## Next Steps
 
