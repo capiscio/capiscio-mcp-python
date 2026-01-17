@@ -21,6 +21,14 @@ This section provides detailed API documentation for all public modules in capis
         - DenyReason
         - ServerState
         - ServerErrorCode
+        - generate_server_keypair
+        - generate_server_keypair_sync
+        - register_server_identity
+        - register_server_identity_sync
+        - setup_server_identity
+        - setup_server_identity_sync
+        - RegistrationError
+        - KeyGenerationError
       show_root_heading: false
 
 ## Guard Module (RFC-006)
@@ -89,6 +97,21 @@ This section provides detailed API documentation for all public modules in capis
         - ServerVerifyError
         - CoreConnectionError
         - CoreVersionError
+      show_root_heading: false
+
+## Registration Module (Server Identity)
+
+::: capiscio_mcp.registration
+    options:
+      members:
+        - generate_server_keypair
+        - generate_server_keypair_sync
+        - register_server_identity
+        - register_server_identity_sync
+        - setup_server_identity
+        - setup_server_identity_sync
+        - RegistrationError
+        - KeyGenerationError
       show_root_heading: false
 
 ## MCP SDK Integration

@@ -65,6 +65,7 @@ nav:
       - Installation: getting-started/installation.md
       - Quickstart: getting-started/quickstart.md
   - Guides:
+      - Server Registration: guides/server-registration.md
       - Server-Side (Guarding Tools): guides/server-side.md
       - Client-Side (Verifying Servers): guides/client-side.md
       - Evidence Logging: guides/evidence.md

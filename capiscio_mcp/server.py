@@ -142,6 +142,18 @@ async def verify_server(
             error_code=ServerErrorCode.NONE,
         )
     
+    # Quick path: DID disclosed but no badge → DECLARED_PRINCIPAL
+    # Per RFC-007 §7.2: No badge means identity is claimed but not verified
+    # This path doesn't require gRPC connection to capiscio-core
+    if not server_badge:
+        logger.debug(f"Server disclosed DID ({server_did}) but no badge (DECLARED_PRINCIPAL)")
+        return VerifyResult(
+            state=ServerState.DECLARED_PRINCIPAL,
+            server_did=server_did,
+            error_code=ServerErrorCode.NONE,
+        )
+    
+    # Full verification path: DID + badge requires gRPC validation
     # Get core client
     client = await CoreClient.get_instance()
     
