@@ -50,6 +50,7 @@ from capiscio_mcp.types import (
     DenyReason,
     ServerState,
     ServerErrorCode,
+    TrustLevel,
 )
 from capiscio_mcp.errors import (
     GuardError,
@@ -63,10 +64,12 @@ from capiscio_mcp.guard import (
     GuardConfig,
     GuardResult,
     compute_params_hash,
+    evaluate_tool_access,
 )
 from capiscio_mcp.server import (
     verify_server,
     verify_server_sync,
+    verify_server_strict,
     VerifyConfig,
     VerifyResult,
     parse_http_headers,
@@ -112,6 +115,7 @@ __all__ = [
     "DenyReason",
     "ServerState",
     "ServerErrorCode",
+    "TrustLevel",
     # Errors
     "GuardError",
     "ServerVerifyError",
@@ -123,9 +127,11 @@ __all__ = [
     "GuardConfig",
     "GuardResult",
     "compute_params_hash",
+    "evaluate_tool_access",
     # Server (RFC-007)
     "verify_server",
     "verify_server_sync",
+    "verify_server_strict",
     "VerifyConfig",
     "VerifyResult",
     "parse_http_headers",
