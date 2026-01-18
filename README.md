@@ -14,10 +14,12 @@ Tool-level security for Model Context Protocol servers.
 ## Installation
 
 ```bash
-# Standalone (no MCP SDK dependency)
 pip install capiscio-mcp
+```
 
-# With MCP SDK integration
+For MCP SDK integration (FastMCP wrapper):
+
+```bash
 pip install capiscio-mcp[mcp]
 ```
 
@@ -77,30 +79,6 @@ async def execute_query(sql: str) -> list[dict]:
     pass
 ```
 
-### With MCP SDK Integration
-
-```python
-from capiscio_mcp.integrations.mcp import CapiscioMCPServer
-
-server = CapiscioMCPServer(
-    name="filesystem",
-    did="did:web:mcp.example.com:servers:filesystem",
-    badge="eyJhbGc...",  # Server's trust badge
-)
-
-@server.tool(min_trust_level=2)
-async def read_file(path: str) -> str:
-    """Read a file (requires Trust Level 2+)."""
-    with open(path) as f:
-        return f.read()
-
-@server.tool(min_trust_level=3)
-async def write_file(path: str, content: str) -> None:
-    """Write a file (requires Trust Level 3+)."""
-    with open(path, "w") as f:
-        f.write(content)
-```
-
 ## Quickstart 2: Client-Side (Server Verification)
 
 Verify the identity of MCP servers you connect to:
@@ -122,22 +100,6 @@ elif result.state == ServerState.UNVERIFIED_ORIGIN:
     print("Warning: Server did not disclose identity")
 ```
 
-### With MCP SDK Integration
-
-```python
-from capiscio_mcp.integrations.mcp import CapiscioMCPClient
-
-async with CapiscioMCPClient(
-    server_url="https://mcp.example.com",
-    min_trust_level=2,  # Require verified identity
-    badge="eyJhbGc...",  # Your client badge
-) as client:
-    # Server identity already verified
-    print(f"Connected at trust level {client.server_trust_level}")
-    
-    result = await client.call_tool("read_file", {"path": "/data/file.txt"})
-```
-
 ## Quickstart 3: Server Registration
 
 Register your MCP server's identity with the CapiscIO registry:
@@ -149,6 +111,7 @@ from capiscio_mcp import setup_server_identity
 result = await setup_server_identity(
     server_id="550e8400-e29b-41d4-a716-446655440000",  # From dashboard
     api_key="sk_live_...",  # Registry API key
+    ca_url="https://registry.capisc.io",  # Optional, defaults to production
     output_dir="./keys",
 )
 
@@ -171,7 +134,67 @@ await register_server_identity(
     api_key="sk_live_...",
     did=keys["did_key"],
     public_key=keys["public_key_pem"],
+    ca_url="https://registry.capisc.io",  # Optional, defaults to production
 )
+```
+
+## MCP SDK Integration
+
+For seamless integration with the official [MCP Python SDK](https://github.com/modelcontextprotocol/python-sdk), install with the `mcp` extra:
+
+```bash
+pip install capiscio-mcp[mcp]
+```
+
+### Server with FastMCP Wrapper
+
+Create an MCP server with built-in trust enforcement:
+
+```python
+from capiscio_mcp.integrations.mcp import CapiscioMCPServer
+
+server = CapiscioMCPServer(
+    name="filesystem",
+    did="did:web:mcp.example.com:servers:filesystem",
+    badge="eyJhbGc...",  # From CapiscIO registry
+)
+
+@server.tool(min_trust_level=2)
+async def read_file(path: str) -> str:
+    """Only agents with Trust Level 2+ can read files."""
+    with open(path) as f:
+        return f.read()
+
+@server.tool(min_trust_level=0)
+async def list_files(directory: str) -> list[str]:
+    """Any authenticated agent can list files."""
+    import os
+    return os.listdir(directory)
+
+# Run the server (stdio transport)
+server.run()
+```
+
+### Client with Trust Verification
+
+Connect to MCP servers with automatic identity verification:
+
+```python
+from capiscio_mcp.integrations.mcp import CapiscioMCPClient
+
+async with CapiscioMCPClient(
+    command="python",
+    args=["my_mcp_server.py"],
+    min_trust_level=1,
+    badge="eyJhbGc...",  # Your client badge
+) as client:
+    # List available tools
+    tools = await client.list_tools()
+    print(f"Available tools: {[t['name'] for t in tools]}")
+    
+    # Call a tool
+    result = await client.call_tool("read_file", {"path": "/data/config.json"})
+    print(result)
 ```
 
 ## Core Connection Modes
@@ -296,7 +319,7 @@ config = VerifyConfig(
 
 - `verify_server(server_did, server_badge, transport_origin, endpoint_path, config)` — Async verification
 - `verify_server_sync(...)` — Sync verification
-- `verify_server_strict(...)` — Raises on any verification failure
+- `verify_server_strict(...)` — Raises ServerVerifyError on any verification failure
 - `parse_http_headers(headers)` — Extract identity from HTTP headers
 - `parse_jsonrpc_meta(meta)` — Extract identity from MCP _meta
 - `VerifyConfig` — Configuration dataclass
@@ -319,9 +342,20 @@ config = VerifyConfig(
 - `Decision` — ALLOW / DENY
 - `AuthLevel` — ANONYMOUS / API_KEY / BADGE
 - `DenyReason` — Enumeration of denial reasons
+- `TrustLevel` — Trust levels 0-4 per RFC-002
 - `ServerState` — VERIFIED_PRINCIPAL / DECLARED_PRINCIPAL / UNVERIFIED_ORIGIN
 - `ServerErrorCode` — Enumeration of verification error codes
-- `TrustLevel` — 0-4 trust level enum
+
+### MCP SDK Integration (optional)
+
+Requires `pip install capiscio-mcp[mcp]`:
+
+- `CapiscioMCPServer(name, did, badge, ...)` — FastMCP wrapper with trust enforcement
+- `CapiscioMCPServer.tool(min_trust_level=...)` — Decorator for guarded tools
+- `CapiscioMCPServer.run(transport="stdio")` — Run the server
+- `CapiscioMCPClient(command, args, min_trust_level, ...)` — Client with verification
+- `CapiscioMCPClient.call_tool(name, args)` — Call a tool on verified server
+- `CapiscioMCPClient.list_tools()` — List available tools
 
 ## Documentation
 
