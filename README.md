@@ -177,7 +177,7 @@ server.run()
 
 ### Client with Trust Verification
 
-Connect to MCP servers with automatic identity verification:
+Connect to MCP servers via stdio transport:
 
 ```python
 from capiscio_mcp.integrations.mcp import CapiscioMCPClient
@@ -353,9 +353,11 @@ Requires `pip install capiscio-mcp[mcp]`:
 - `CapiscioMCPServer(name, did, badge, ...)` — FastMCP wrapper with trust enforcement
 - `CapiscioMCPServer.tool(min_trust_level=...)` — Decorator for guarded tools
 - `CapiscioMCPServer.run(transport="stdio")` — Run the server
-- `CapiscioMCPClient(command, args, min_trust_level, ...)` — Client with verification
-- `CapiscioMCPClient.call_tool(name, args)` — Call a tool on verified server
+- `CapiscioMCPClient(command, args, ...)` — Client for stdio transport*
+- `CapiscioMCPClient.call_tool(name, args)` — Call a tool on the server
 - `CapiscioMCPClient.list_tools()` — List available tools
+
+*Note: Server identity verification in `CapiscioMCPClient` requires MCP SDK support for `_meta` passthrough in initialize responses. This is not yet available, so `min_trust_level` and `fail_on_unverified` parameters are currently not enforced. Server-side trust enforcement via `@server.tool(min_trust_level=...)` works fully.
 
 ## Documentation
 

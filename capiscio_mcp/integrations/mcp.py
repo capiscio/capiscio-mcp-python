@@ -374,13 +374,19 @@ class CapiscioMCPServer:
         """
         self._server.run(transport=transport)
     
-    async def run_stdio(self) -> None:
-        """Run the server over stdio transport (async version)."""
+    def run_stdio(self) -> None:
+        """Run the server over stdio transport.
+        
+        Deprecated: Use run() instead.
+        """
         # For backwards compatibility, delegate to run()
         self._server.run(transport="stdio")
     
-    async def run_sse(self, port: int = 8080) -> None:
-        """Run the server over SSE transport (deprecated, use streamable-http)."""
+    def run_sse(self, port: int = 8080) -> None:
+        """Run the server over SSE transport.
+        
+        Deprecated: Use run(transport="sse") instead. SSE is deprecated in favor of streamable-http.
+        """
         logger.warning("SSE transport is deprecated, use streamable-http instead")
         self._server.run(transport="sse")
 
@@ -449,8 +455,18 @@ class CapiscioMCPClient:
             verify_config: Full verification configuration
             badge: Client badge for authentication (recommended)
             api_key: Client API key for authentication (alternative)
+            
+        Raises:
+            ValueError: If neither server_url nor command is provided
         """
         _require_mcp_client()
+        
+        # Ensure at least one transport method is configured
+        if server_url is None and command is None:
+            raise ValueError(
+                "Either server_url or command must be provided to CapiscioMCPClient "
+                "to select an HTTP or stdio transport."
+            )
         
         self.server_url = server_url
         self.command = command
@@ -585,14 +601,19 @@ class CapiscioMCPClient:
     
     async def connect(self) -> None:
         """
-        Connect to MCP server and verify identity.
+        Connect to MCP server.
         
         For stdio transport, spawns the server process.
-        For HTTP transport, connects to the server URL.
+        For HTTP transport, connects to the server URL (not yet implemented).
+        
+        Note:
+            Server identity verification (min_trust_level, fail_on_unverified) is
+            not yet functional due to MCP SDK limitations. The SDK does not currently
+            expose _meta from the initialize response, which is needed to extract
+            server DID and badge. Server-side trust enforcement works fully.
         
         Raises:
-            ServerVerifyError: If server verification fails and fail_on_unverified=True
-            GuardError: If server doesn't meet trust requirements
+            NotImplementedError: If HTTP transport is requested (not yet supported)
         """
         if self.command:
             # Stdio transport - spawn server process
@@ -601,41 +622,36 @@ class CapiscioMCPClient:
                 args=self.args,
             )
             self._context_manager = stdio_client(server_params)
-            read_stream, write_stream = await self._context_manager.__aenter__()
-            self._session = McpClientSession(read_stream, write_stream)
-            await self._session.__aenter__()
-            
-            # Initialize the session
-            await self._session.initialize()
+            try:
+                read_stream, write_stream = await self._context_manager.__aenter__()
+                self._session = McpClientSession(read_stream, write_stream)
+                try:
+                    await self._session.__aenter__()
+                    # Initialize the session
+                    await self._session.initialize()
+                except Exception:
+                    # Clean up session on failure
+                    self._session = None
+                    raise
+            except Exception:
+                # Clean up context manager on failure
+                if self._context_manager:
+                    try:
+                        await self._context_manager.__aexit__(None, None, None)
+                    except Exception:
+                        pass
+                    self._context_manager = None
+                raise
         else:
             # HTTP transport would go here
-            # For now, just log that it's not implemented
             logger.warning("HTTP transport not yet implemented, use stdio with command/args")
             raise NotImplementedError("HTTP transport not yet implemented")
         
-        # Extract server identity from initialize response
-        # Note: MCP SDK currently doesn't expose _meta from initialize response easily
-        # This is a known limitation - identity verification works via separate channels
-        server_did: Optional[str] = None
-        server_badge: Optional[str] = None
-        
-        # For now, we skip verification if we can't get identity
-        # Full verification requires protocol support for _meta passthrough
-        if server_did or server_badge:
-            self._verify_result = await verify_server(
-                server_did=server_did,
-                server_badge=server_badge,
-                transport_origin=self.server_url or f"stdio:{self.command}",
-                config=self.verify_config,
-            )
-            
-            # Enforce requirements
-            if self.fail_on_unverified and self._verify_result.state == ServerState.UNVERIFIED_ORIGIN:
-                raise ServerVerifyError(
-                    error_code=self._verify_result.error_code,
-                    detail=f"Server did not disclose identity",
-                    state=self._verify_result.state,
-                )
+        # Note: Server identity verification is not yet functional.
+        # MCP SDK currently doesn't expose _meta from initialize response,
+        # so we cannot extract server_did and server_badge for verification.
+        # The min_trust_level and fail_on_unverified parameters are stored
+        # for future use when MCP SDK adds _meta passthrough support.
         
         logger.info(f"Connected to MCP server: {self.command or self.server_url}")
     
@@ -701,8 +717,9 @@ class CapiscioMCPClient:
             result = await self._session.call_tool(name, arguments or {})
             return result
         finally:
-            # Note: credential context is thread-local, no explicit reset needed
-            pass
+            # Reset credential context to avoid leakage between calls/tasks
+            from capiscio_mcp.guard import _current_credential
+            _current_credential.reset(token)
     
     async def list_tools(self) -> List[Dict[str, Any]]:
         """
