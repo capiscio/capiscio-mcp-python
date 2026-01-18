@@ -114,5 +114,5 @@ Per RFC-002 v1.4:
 
 ## Documentation
 
-- [RFC-006: MCP Tool Authority and Evidence](../rfcs/006-mcp-tool-authority-evidence.md)
-- [RFC-007: MCP Server Identity Disclosure](../rfcs/007-mcp-server-identity-discovery.md)
+- [RFC-006: MCP Tool Authority and Evidence](https://github.com/capiscio/capiscio-rfcs/blob/main/docs/006-mcp-tool-authority-evidence.md)
+- [RFC-007: MCP Server Identity Disclosure](https://github.com/capiscio/capiscio-rfcs/blob/main/docs/007-mcp-server-identity-discovery.md)
