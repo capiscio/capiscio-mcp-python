@@ -76,13 +76,15 @@ elif result.state == ServerState.UNVERIFIED_ORIGIN:
 
 ## Trust Levels
 
-| Level | Name | Who Issues | Use Case |
+Per RFC-002 v1.4:
+
+| Level | Name | Validation | Use Case |
 |-------|------|------------|----------|
-| 0 | Self-Signed | Agent itself (`did:key`) | Development, testing |
-| 1 | Domain Validated (DV) | CapiscIO Registry | Production agents |
-| 2 | Organization Validated (OV) | CapiscIO Registry | Business agents |
-| 3 | Extended Validation (EV) | CapiscIO Registry | Financial, healthcare |
-| 4 | Continuous Validation (CV) | CapiscIO Registry | Critical infrastructure |
+| 0 | Self-Signed (SS) | None, `did:key` issuer | Local dev, testing, demos |
+| 1 | Registered (REG) | Account registration | Development, internal agents |
+| 2 | Domain Validated (DV) | DNS/HTTP challenge | Production, B2B agents |
+| 3 | Organization Validated (OV) | DUNS/legal entity | High-trust production |
+| 4 | Extended Validated (EV) | Manual review + legal | Regulated industries |
 
 ## Next Steps
 

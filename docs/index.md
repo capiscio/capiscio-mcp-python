@@ -14,6 +14,7 @@ MCP servers expose powerful tools to autonomous agents—file systems, databases
 - **Authenticate** which agent is calling a tool
 - **Authorize** whether that agent should have access
 - **Audit** what happened for post-incident review
+- **Identify** which server the client is connecting to
 
 MCP Guard solves this with:
 
@@ -22,7 +23,8 @@ MCP Guard solves this with:
 | **@guard decorator** | Protect tools with trust-level requirements |
 | **Evidence logging** | Cryptographic audit trail for every invocation |
 | **Server identity** | Verify MCP servers before connecting |
-| **Trust levels** | 0 (self-signed) → 4 (continuous validation) |
+| **Server registration** | Generate keypairs and register server DIDs |
+| **Trust levels** | 0 (self-signed) → 4 (extended validation) |
 
 ## Quick Example
 
@@ -54,13 +56,15 @@ if result.state == ServerState.VERIFIED_PRINCIPAL:
 
 ## Trust Levels
 
-| Level | Name | Description |
-|-------|------|-------------|
-| 0 | Self-Signed | `did:key` issuer, cryptographic identity only |
-| 1 | Domain Validated (DV) | Domain ownership verified |
-| 2 | Organization Validated (OV) | Organization identity verified |
-| 3 | Extended Validation (EV) | Legal entity verification |
-| 4 | Continuous Validation (CV) | Runtime attestation |
+Per RFC-002 v1.4:
+
+| Level | Name | Validation | Use Case |
+|-------|------|------------|----------|
+| 0 | Self-Signed (SS) | None, `did:key` issuer | Local dev, testing, demos |
+| 1 | Registered (REG) | Account registration | Development, internal agents |
+| 2 | Domain Validated (DV) | DNS/HTTP challenge | Production, B2B agents |
+| 3 | Organization Validated (OV) | DUNS/legal entity | High-trust production |
+| 4 | Extended Validated (EV) | Manual review + legal | Regulated industries |
 
 ## Next Steps
 
@@ -81,6 +85,14 @@ if result.state == ServerState.VERIFIED_PRINCIPAL:
     Get started in 5 minutes with the @guard decorator.
 
     [:octicons-arrow-right-24: Quickstart](getting-started/quickstart.md)
+
+-   :material-key:{ .lg .middle } **Server Registration**
+
+    ---
+
+    Generate a keypair and register your server's DID.
+
+    [:octicons-arrow-right-24: Server Registration](guides/server-registration.md)
 
 -   :material-shield-check:{ .lg .middle } **Server-Side Guide**
 

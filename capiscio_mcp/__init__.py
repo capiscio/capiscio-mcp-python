@@ -7,6 +7,7 @@ RFC-007: MCP Server Identity Disclosure and Verification
 This package provides:
 - @guard decorator for protecting MCP tools with trust-level requirements
 - Server identity verification for MCP clients
+- Server identity registration for MCP servers
 - PoP (Proof of Possession) handshake for server key verification
 - Evidence logging for audit and forensics
 
@@ -31,6 +32,16 @@ Quickstart (Client-side):
     )
     if result.state == ServerState.VERIFIED_PRINCIPAL:
         print(f"Trusted at level {result.trust_level}")
+
+Quickstart (Server Registration):
+    from capiscio_mcp import setup_server_identity
+
+    result = await setup_server_identity(
+        server_id="your-server-uuid",
+        api_key="sk_live_...",
+        output_dir="./keys",
+    )
+    print(f"Server DID: {result['did']}")
 """
 
 from capiscio_mcp.types import (
@@ -70,6 +81,16 @@ from capiscio_mcp.pop import (
     PoPError,
     PoPSignatureError,
     PoPExpiredError,
+)
+from capiscio_mcp.registration import (
+    generate_server_keypair,
+    generate_server_keypair_sync,
+    register_server_identity,
+    register_server_identity_sync,
+    setup_server_identity,
+    setup_server_identity_sync,
+    RegistrationError,
+    KeyGenerationError,
 )
 from capiscio_mcp._core.version import (
     MCP_VERSION,
@@ -118,4 +139,13 @@ __all__ = [
     "PoPError",
     "PoPSignatureError",
     "PoPExpiredError",
+    # Registration (MCP Server Identity)
+    "generate_server_keypair",
+    "generate_server_keypair_sync",
+    "register_server_identity",
+    "register_server_identity_sync",
+    "setup_server_identity",
+    "setup_server_identity_sync",
+    "RegistrationError",
+    "KeyGenerationError",
 ]

@@ -36,7 +36,8 @@ MCP Guard solves this with:
 | **@guard decorator** | Protect tools with trust-level requirements |
 | **Evidence logging** | Cryptographic audit trail for every invocation |
 | **Server identity** | Verify MCP servers before connecting |
-| **Trust levels** | 0 (self-signed) → 4 (continuous validation) |
+| **Server registration** | Generate keypairs and register server DIDs |
+| **Trust levels** | 0 (self-signed) → 4 (extended validation) |
 
 ## Quickstart 1: Server-Side (Tool Guarding)
 
@@ -137,6 +138,42 @@ async with CapiscioMCPClient(
     result = await client.call_tool("read_file", {"path": "/data/file.txt"})
 ```
 
+## Quickstart 3: Server Registration
+
+Register your MCP server's identity with the CapiscIO registry:
+
+```python
+from capiscio_mcp import setup_server_identity
+
+# One-step setup: generate keys + register with registry
+result = await setup_server_identity(
+    server_id="550e8400-e29b-41d4-a716-446655440000",  # From dashboard
+    api_key="sk_live_...",  # Registry API key
+    output_dir="./keys",
+)
+
+print(f"Server DID: {result['did']}")
+# did:key:z6MkhaXgBZDvotDkL5257faiztiGiC2QtKLGpbnnEGta2doK
+print(f"Private key saved to: {result['private_key_path']}")
+```
+
+### Step-by-Step Registration
+
+```python
+from capiscio_mcp import generate_server_keypair, register_server_identity
+
+# Step 1: Generate keypair
+keys = await generate_server_keypair(output_dir="./keys")
+
+# Step 2: Register with registry
+await register_server_identity(
+    server_id="550e8400-e29b-41d4-a716-446655440000",
+    api_key="sk_live_...",
+    did=keys["did_key"],
+    public_key=keys["public_key_pem"],
+)
+```
+
 ## Core Connection Modes
 
 MCP Guard connects to capiscio-core for cryptographic operations:
@@ -164,13 +201,15 @@ export CAPISCIO_CORE_ADDR="localhost:50051"
 
 ## Trust Levels
 
-| Level | Name | Description |
-|-------|------|-------------|
-| 0 | Self-Signed | `did:key` issuer, cryptographic identity only |
-| 1 | Domain Validated (DV) | Domain ownership verified |
-| 2 | Organization Validated (OV) | Organization identity verified |
-| 3 | Extended Validation (EV) | Legal entity verification |
-| 4 | Continuous Validation (CV) | Runtime attestation |
+Per RFC-002 v1.4:
+
+| Level | Name | Validation | Use Case |
+|-------|------|------------|----------|
+| 0 | Self-Signed (SS) | None, `did:key` issuer | Local dev, testing, demos |
+| 1 | Registered (REG) | Account registration | Development, internal agents |
+| 2 | Domain Validated (DV) | DNS/HTTP challenge | Production, B2B agents |
+| 3 | Organization Validated (OV) | DUNS/legal entity | High-trust production |
+| 4 | Extended Validated (EV) | Manual review + legal | Regulated industries |
 
 ## Evidence Logging
 
@@ -264,6 +303,17 @@ config = VerifyConfig(
 - `VerifyResult` — Verification result dataclass
 - `ServerVerifyError` — Exception for verification failures
 
+### Registration (Server Identity)
+
+- `generate_server_keypair(key_id, output_dir)` — Generate Ed25519 keypair
+- `generate_server_keypair_sync(...)` — Sync version
+- `register_server_identity(server_id, api_key, did, public_key, ca_url)` — Register DID with registry
+- `register_server_identity_sync(...)` — Sync version
+- `setup_server_identity(server_id, api_key, ca_url, output_dir, key_id)` — Combined setup
+- `setup_server_identity_sync(...)` — Sync version
+- `RegistrationError` — Exception for registration failures
+- `KeyGenerationError` — Exception for key generation failures
+
 ### Types
 
 - `Decision` — ALLOW / DENY
@@ -277,9 +327,10 @@ config = VerifyConfig(
 
 - [RFC-006: MCP Tool Authority and Evidence](https://docs.capisc.io/rfcs/006)
 - [RFC-007: MCP Server Identity Disclosure](https://docs.capisc.io/rfcs/007)
-- [Server-Side Guide](https://docs.capisc.io/mcp/server-side)
-- [Client-Side Guide](https://docs.capisc.io/mcp/client-side)
-- [Evidence Logging Guide](https://docs.capisc.io/mcp/evidence)
+- [Server Registration Guide](https://docs.capisc.io/mcp-guard/guides/server-registration)
+- [Server-Side Guide](https://docs.capisc.io/mcp-guard/guides/server-side)
+- [Client-Side Guide](https://docs.capisc.io/mcp-guard/guides/client-side)
+- [Evidence Logging Guide](https://docs.capisc.io/mcp-guard/guides/evidence)
 
 ## Development
 

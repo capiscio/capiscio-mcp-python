@@ -210,13 +210,12 @@ class TestGuardDecorator:
         mock_core_client.stub.EvaluateToolAccess = AsyncMock(return_value=mock_response)
         
         with patch("capiscio_mcp._core.client.CoreClient.get_instance", return_value=mock_core_client):
-            with patch("capiscio_mcp.guard._caller_badge", return_value=sample_badge_jws):
-                @guard(min_trust_level=2)
-                async def read_file(path: str) -> str:
-                    return f"Contents of {path}"
-                
-                result = await read_file(path="/tmp/test.txt")
-                assert result == "Contents of /tmp/test.txt"
+            @guard(min_trust_level=2)
+            async def read_file(path: str) -> str:
+                return f"Contents of {path}"
+            
+            result = await read_file(path="/tmp/test.txt")
+            assert result == "Contents of /tmp/test.txt"
     
     @pytest.mark.asyncio
     async def test_guard_denies_insufficient_trust(self, mock_core_client, sample_badge_jws):
@@ -235,16 +234,15 @@ class TestGuardDecorator:
         mock_core_client.stub.EvaluateToolAccess = AsyncMock(return_value=mock_response)
         
         with patch("capiscio_mcp._core.client.CoreClient.get_instance", return_value=mock_core_client):
-            with patch("capiscio_mcp.guard._caller_badge", return_value=sample_badge_jws):
-                @guard(min_trust_level=2)
-                async def read_file(path: str) -> str:
-                    return f"Contents of {path}"
-                
-                with pytest.raises(GuardError) as exc_info:
-                    await read_file(path="/tmp/test.txt")
-                
-                assert exc_info.value.reason == DenyReason.TRUST_INSUFFICIENT
-                assert "evidence_id" in dir(exc_info.value)
+            @guard(min_trust_level=2)
+            async def read_file(path: str) -> str:
+                return f"Contents of {path}"
+            
+            with pytest.raises(GuardError) as exc_info:
+                await read_file(path="/tmp/test.txt")
+            
+            assert exc_info.value.reason == DenyReason.TRUST_INSUFFICIENT
+            assert "evidence_id" in dir(exc_info.value)
     
     @pytest.mark.asyncio
     async def test_guard_denies_missing_badge(self, mock_core_client):
@@ -263,15 +261,14 @@ class TestGuardDecorator:
         mock_core_client.stub.EvaluateToolAccess = AsyncMock(return_value=mock_response)
         
         with patch("capiscio_mcp._core.client.CoreClient.get_instance", return_value=mock_core_client):
-            with patch("capiscio_mcp.guard._caller_badge", return_value=None):
-                @guard(min_trust_level=1)
-                async def read_file(path: str) -> str:
-                    return f"Contents of {path}"
-                
-                with pytest.raises(GuardError) as exc_info:
-                    await read_file(path="/tmp/test.txt")
-                
-                assert exc_info.value.reason == DenyReason.BADGE_MISSING
+            @guard(min_trust_level=1)
+            async def read_file(path: str) -> str:
+                return f"Contents of {path}"
+            
+            with pytest.raises(GuardError) as exc_info:
+                await read_file(path="/tmp/test.txt")
+            
+            assert exc_info.value.reason == DenyReason.BADGE_MISSING
     
     @pytest.mark.asyncio
     async def test_guard_uses_function_name_as_tool_name(self, mock_core_client, sample_badge_jws):
@@ -290,18 +287,17 @@ class TestGuardDecorator:
         mock_core_client.stub.EvaluateToolAccess = evaluate_mock
         
         with patch("capiscio_mcp._core.client.CoreClient.get_instance", return_value=mock_core_client):
-            with patch("capiscio_mcp.guard._caller_badge", return_value=sample_badge_jws):
-                @guard()
-                async def my_custom_tool(arg: str) -> str:
-                    return arg
-                
-                await my_custom_tool(arg="test")
-                
-                # Verify tool_name was passed correctly
-                call_args = evaluate_mock.call_args
-                assert call_args is not None
-                request = call_args[0][0]
-                assert request.tool_name == "my_custom_tool"
+            @guard()
+            async def my_custom_tool(arg: str) -> str:
+                return arg
+            
+            await my_custom_tool(arg="test")
+            
+            # Verify tool_name was passed correctly
+            call_args = evaluate_mock.call_args
+            assert call_args is not None
+            request = call_args[0][0]
+            assert request.tool_name == "my_custom_tool"
     
     @pytest.mark.asyncio
     async def test_guard_custom_tool_name(self, mock_core_client, sample_badge_jws):
@@ -320,16 +316,15 @@ class TestGuardDecorator:
         mock_core_client.stub.EvaluateToolAccess = evaluate_mock
         
         with patch("capiscio_mcp._core.client.CoreClient.get_instance", return_value=mock_core_client):
-            with patch("capiscio_mcp.guard._caller_badge", return_value=sample_badge_jws):
-                @guard(tool_name="filesystem.read")
-                async def read_file(path: str) -> str:
-                    return f"Contents of {path}"
-                
-                await read_file(path="/tmp/test.txt")
-                
-                call_args = evaluate_mock.call_args
-                request = call_args[0][0]
-                assert request.tool_name == "filesystem.read"
+            @guard(tool_name="filesystem.read")
+            async def read_file(path: str) -> str:
+                return f"Contents of {path}"
+            
+            await read_file(path="/tmp/test.txt")
+            
+            call_args = evaluate_mock.call_args
+            request = call_args[0][0]
+            assert request.tool_name == "filesystem.read"
     
     @pytest.mark.asyncio
     async def test_guard_computes_params_hash(self, mock_core_client, sample_badge_jws):
@@ -348,16 +343,15 @@ class TestGuardDecorator:
         mock_core_client.stub.EvaluateToolAccess = evaluate_mock
         
         with patch("capiscio_mcp._core.client.CoreClient.get_instance", return_value=mock_core_client):
-            with patch("capiscio_mcp.guard._caller_badge", return_value=sample_badge_jws):
-                @guard()
-                async def query_db(sql: str, limit: int) -> list:
-                    return []
-                
-                await query_db(sql="SELECT * FROM users", limit=10)
-                
-                call_args = evaluate_mock.call_args
-                request = call_args[0][0]
-                assert request.params_hash.startswith("sha256:")
+            @guard()
+            async def query_db(sql: str, limit: int) -> list:
+                return []
+            
+            await query_db(sql="SELECT * FROM users", limit=10)
+            
+            call_args = evaluate_mock.call_args
+            request = call_args[0][0]
+            assert request.params_hash.startswith("sha256:")
 
 
 class TestGuardSyncDecorator:
@@ -384,14 +378,13 @@ class TestGuardSyncDecorator:
             return mock_core_client
         
         with patch("capiscio_mcp._core.client.CoreClient.get_instance", mock_get_instance):
-            with patch("capiscio_mcp.guard._caller_badge", return_value=sample_badge_jws):
-                @guard_sync(min_trust_level=1)
-                def sync_read_file(path: str) -> str:
-                    return f"Contents of {path}"
-                
-                # This should run without asyncio
-                result = sync_read_file(path="/tmp/test.txt")
-                assert result == "Contents of /tmp/test.txt"
+            @guard_sync(min_trust_level=1)
+            def sync_read_file(path: str) -> str:
+                return f"Contents of {path}"
+            
+            # This should run without asyncio
+            result = sync_read_file(path="/tmp/test.txt")
+            assert result == "Contents of /tmp/test.txt"
 
 
 class TestContextVariables:

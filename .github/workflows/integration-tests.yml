@@ -54,7 +54,7 @@ jobs:
           chmod +x bin/capiscio
           echo "Built capiscio binary:"
           ls -la bin/capiscio
-          ./bin/capiscio version
+          ./bin/capiscio --version
       
       - name: Set up Python
         uses: actions/setup-python@v5

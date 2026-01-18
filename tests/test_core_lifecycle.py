@@ -235,13 +235,15 @@ class TestEnsureBinary:
     
     @pytest.mark.asyncio
     async def test_calls_download_binary(self):
-        """Should call download_binary in executor."""
-        with patch("capiscio_mcp._core.lifecycle.download_binary") as mock_download:
-            mock_download.return_value = Path("/tmp/capiscio")
-            
-            await ensure_binary()
-            
-            mock_download.assert_called_once()
+        """Should call download_binary in executor when no local override."""
+        # Clear any CAPISCIO_BINARY_PATH env var to ensure download path is taken
+        with patch.dict(os.environ, {}, clear=True):
+            with patch("capiscio_mcp._core.lifecycle.download_binary") as mock_download:
+                mock_download.return_value = Path("/tmp/capiscio")
+                
+                await ensure_binary()
+                
+                mock_download.assert_called_once()
 
 
 class TestStartCoreProcess:
