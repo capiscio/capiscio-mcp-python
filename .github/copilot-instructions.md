@@ -16,10 +16,7 @@
 
 ## 🚨 CRITICAL: Read First
 
-**Before starting work, read the workspace context files:**
-1. `../../.context/CURRENT_SPRINT.md`
-2. `../../.context/ACTIVE_TASKS.md`
-3. `../../.context/SESSION_LOG.md`
+**Before starting work, check the repo's README.md and existing code patterns.**
 
 ---
 
@@ -39,11 +36,13 @@ capiscio-mcp-python/
 ├── capiscio_mcp/
 │   ├── __init__.py          # Public API exports
 │   ├── guard.py             # @guard decorator — core trust enforcement
-│   ├── evidence.py          # Cryptographic audit trail logging
-│   ├── server_identity.py   # Server DID generation & registration
-│   ├── verify.py            # Badge verification (calls capiscio-core gRPC)
-│   ├── fastmcp.py           # FastMCP integration wrapper
-│   └── types.py             # Shared type definitions
+│   ├── server.py            # Server verification utilities
+│   ├── registration.py      # Server DID generation & registration
+│   ├── pop.py               # Proof-of-possession and evidence handling
+│   ├── integrations/        # MCP framework integrations
+│   │   └── mcp.py           # CapiscioMCPServer/Client wrappers
+│   ├── types.py             # Shared type definitions
+│   └── errors.py            # Error classes
 ├── docs/                    # MkDocs documentation
 ├── tests/                   # Test suite
 └── pyproject.toml           # Package configuration
@@ -69,11 +68,11 @@ async def sensitive_tool(query: str, badge: str) -> str:
 For use with the MCP SDK's FastMCP server:
 
 ```python
-from capiscio_mcp.fastmcp import GuardedMCP
+from capiscio_mcp.integrations.mcp import CapiscioMCPServer
 
-mcp = GuardedMCP("my-server", default_trust_level=1)
+server = CapiscioMCPServer("my-server", default_trust_level=1)
 
-@mcp.tool()
+@server.tool()
 @guard(min_trust_level=2)
 async def protected_tool(query: str) -> str:
     ...
@@ -84,10 +83,13 @@ async def protected_tool(query: str) -> str:
 MCP servers register their own identity (DID) with CapiscIO:
 
 ```python
-from capiscio_mcp import register_server, verify_server
+from capiscio_mcp import setup_server_identity, register_server_identity, verify_server
 
-# Register this server's identity
-identity = await register_server(name="my-mcp-server", url="https://...")
+# Set up this server's identity (generates keys, prepares DID document)
+await setup_server_identity(name="my-mcp-server", url="https://...")
+
+# Register this server's identity with the CapiscIO registry
+identity = await register_server_identity()
 
 # Verify another server
 result = await verify_server("did:web:other-server.example.com")
@@ -121,15 +123,22 @@ CAPISCIO_CORE_ADDR=localhost:50051  # Local development
 - Level 3: Extended validated (EV)
 - Level 4: Reserved (not yet implemented)
 
-### 4. Async-First
-All public APIs are async. Do NOT add synchronous wrappers without discussion.
+### 4. Async-First APIs
+Public APIs are **async-first** — prefer async interfaces. Synchronous wrappers (e.g., `*_sync`) exist for compatibility; do not add new sync wrappers or change existing ones without discussion and clear documentation.
 
 ## Environment Variables
 
 ```bash
-CAPISCIO_CORE_ADDR=localhost:50051   # gRPC address for capiscio-core
-CAPISCIO_SERVER_URL=https://registry.capisc.io  # Registry URL
-CAPISCIO_LOG_LEVEL=info              # Logging level
+# Optional: Point to a running capiscio-core gRPC server (default: auto-start local)
+CAPISCIO_CORE_ADDR=localhost:50051
+
+# Optional: Filesystem path to capiscio-core binary
+CAPISCIO_BINARY_PATH=/path/to/capiscio-core
+# or set CAPISCIO_BINARY if the binary is on your PATH:
+# CAPISCIO_BINARY=capiscio-core
+
+# Server origin for evidence logging
+CAPISCIO_SERVER_ORIGIN=http://localhost:8000
 ```
 
 ## Common Commands
@@ -142,7 +151,7 @@ pip install -e ".[dev,mcp]"
 pytest -v
 
 # Build docs
-mkdocs serve
+mkdocs build
 
 # Type checking
 mypy capiscio_mcp/
