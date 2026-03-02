@@ -31,6 +31,7 @@ import os
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any, Callable, Optional
+from urllib.parse import urlparse
 
 import requests
 
@@ -53,10 +54,22 @@ DEFAULT_MCP_KEYS_DIR = Path.home() / ".capiscio" / "mcp-servers"
 # ---------------------------------------------------------------------------
 
 
+def _derive_domain(url: str) -> str:
+    """Extract the host (and non-standard port) from a URL for use as badge domain."""
+    parsed = urlparse(url)
+    host = parsed.hostname or "localhost"
+    port = parsed.port
+    # Omit standard ports (80/443) from the domain string
+    if port and port not in (80, 443):
+        return f"{host}:{port}"
+    return host
+
+
 def _issue_badge_sync(
     server_id: str,
     api_key: str,
     ca_url: str,
+    domain: Optional[str] = None,
 ) -> Optional[str]:
     """Call ``POST /v1/sdk/servers/{server_id}/badge`` and return the badge JWS."""
     url = f"{ca_url.rstrip('/')}/v1/sdk/servers/{server_id}/badge"
@@ -64,13 +77,16 @@ def _issue_badge_sync(
         "X-Capiscio-Registry-Key": api_key,
         "Content-Type": "application/json",
     }
+    effective_domain = domain or _derive_domain(ca_url)
     try:
-        resp = requests.post(url, headers=headers, json={}, timeout=30)
+        resp = requests.post(url, headers=headers, json={"domain": effective_domain}, timeout=30)
         if resp.status_code in (200, 201):
             data = resp.json()
             # Try multiple common response shapes
+            nested = data.get("data") or {}
             badge = (
-                (data.get("data") or {}).get("badge")
+                nested.get("badge")
+                or nested.get("token")
                 or data.get("badge")
                 or data.get("token")
             )
@@ -95,6 +111,7 @@ async def _issue_badge(
     server_id: str,
     api_key: str,
     ca_url: str,
+    domain: Optional[str] = None,
 ) -> Optional[str]:
     """Async wrapper for badge issuance."""
     loop = asyncio.get_event_loop()
@@ -104,6 +121,7 @@ async def _issue_badge(
         server_id,
         api_key,
         ca_url,
+        domain,
     )
 
 
@@ -170,6 +188,7 @@ class MCPServerIdentity:
         api_key: str,
         *,
         server_url: str = DEFAULT_REGISTRY,
+        domain: Optional[str] = None,
         keys_dir: Optional[Path] = None,
         auto_badge: bool = True,
         renewal_threshold: int = 30,
@@ -191,6 +210,9 @@ class MCPServerIdentity:
             server_id: MCP server UUID (from the CapiscIO dashboard).
             api_key: Registry API key (``X-Capiscio-Registry-Key``).
             server_url: Registry base URL (default: production).
+            domain: Domain to record in the badge (e.g. ``"tools.example.com"``).
+                Defaults to the hostname extracted from ``server_url``.
+                Use ``CAPISCIO_SERVER_DOMAIN`` env var via :meth:`from_env`.
             keys_dir: Override for key storage directory.
             auto_badge: If ``True``, issue an initial badge and start auto-renewal.
             renewal_threshold: Renew badge this many seconds before expiry.
@@ -286,7 +308,7 @@ class MCPServerIdentity:
         keeper: Optional[ServerBadgeKeeper] = None
 
         if auto_badge:
-            badge = await _issue_badge(server_id, api_key, server_url)
+            badge = await _issue_badge(server_id, api_key, server_url, domain=domain)
             if badge:
                 keeper = ServerBadgeKeeper(
                     server_id=server_id,
@@ -322,6 +344,7 @@ class MCPServerIdentity:
         - ``CAPISCIO_SERVER_ID`` (required)
         - ``CAPISCIO_API_KEY`` (required)
         - ``CAPISCIO_SERVER_URL`` (optional, default: production)
+        - ``CAPISCIO_SERVER_DOMAIN`` (optional, default: hostname from SERVER_URL)
 
         Additional keyword arguments are forwarded to :meth:`connect`.
 
@@ -351,10 +374,12 @@ class MCPServerIdentity:
             )
 
         server_url = os.environ.get("CAPISCIO_SERVER_URL", DEFAULT_REGISTRY)
+        domain = os.environ.get("CAPISCIO_SERVER_DOMAIN")
 
         return await cls.connect(
             server_id=server_id,
             api_key=api_key,
             server_url=server_url,
+            domain=domain or None,
             **kwargs,
         )

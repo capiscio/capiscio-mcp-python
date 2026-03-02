@@ -310,5 +310,6 @@ class TestMCPServerIdentityFromEnv:
             server_id=SERVER_ID,
             api_key=API_KEY,
             server_url="http://localhost:8080",
+            domain=None,
         )
         assert result is fake_identity
