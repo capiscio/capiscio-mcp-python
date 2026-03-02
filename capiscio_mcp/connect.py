@@ -26,14 +26,25 @@ Usage::
 from __future__ import annotations
 
 import asyncio
+import base64
 import logging
 import os
+import sys
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any, Callable, Optional
 from urllib.parse import urlparse
 
+import base58
 import requests
+from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PrivateKey
+from cryptography.hazmat.primitives.serialization import (
+    Encoding,
+    NoEncryption,
+    PrivateFormat,
+    PublicFormat,
+    load_pem_private_key,
+)
 
 from capiscio_mcp.keeper import ServerBadgeKeeper
 from capiscio_mcp.registration import (
@@ -47,6 +58,64 @@ logger = logging.getLogger(__name__)
 
 DEFAULT_REGISTRY = "https://registry.capisc.io"
 DEFAULT_MCP_KEYS_DIR = Path.home() / ".capiscio" / "mcp-servers"
+
+# Env var for injecting the private key in ephemeral environments
+ENV_SERVER_PRIVATE_KEY = "CAPISCIO_SERVER_PRIVATE_KEY_PEM"
+
+
+# ---------------------------------------------------------------------------
+# Key derivation helpers
+# ---------------------------------------------------------------------------
+
+
+def _did_from_ed25519_pub_raw(pub_raw: bytes) -> str:
+    """Derive a did:key from raw Ed25519 public key bytes (32 bytes)."""
+    # Multicodec prefix 0xed01 identifies Ed25519 public keys
+    multicodec = b"\xed\x01" + pub_raw
+    return "did:key:z" + base58.b58encode(multicodec).decode()
+
+
+def _load_private_key_pem(pem_text: str) -> tuple[Ed25519PrivateKey, str, str, str]:
+    """Load a PEM-encoded Ed25519 private key and derive all identity artefacts.
+
+    Returns:
+        (private_key, private_key_pem, public_key_pem, did)
+    """
+    key = load_pem_private_key(pem_text.encode(), password=None)
+    if not isinstance(key, Ed25519PrivateKey):
+        raise ValueError("Expected an Ed25519 private key")
+
+    priv_pem = key.private_bytes(Encoding.PEM, PrivateFormat.PKCS8, NoEncryption()).decode()
+    pub_pem = key.public_key().public_bytes(Encoding.PEM, PublicFormat.SubjectPublicKeyInfo).decode()
+    pub_raw = key.public_key().public_bytes(Encoding.Raw, PublicFormat.Raw)
+    did = _did_from_ed25519_pub_raw(pub_raw)
+    return key, priv_pem, pub_pem, did
+
+
+def _log_key_capture_hint(server_id: str, private_key_pem: str) -> None:
+    """Log a one-time hint telling the user how to persist key material."""
+    # Strip PEM headers to get the single-line base64 DER payload
+    lines = [l for l in private_key_pem.strip().splitlines() if not l.startswith("-----")]
+    der_b64 = "".join(lines)
+
+    logger.warning(
+        "\n"
+        "  ╔══════════════════════════════════════════════════════════════╗\n"
+        "  ║  New server identity generated — save key for persistence  ║\n"
+        "  ╚══════════════════════════════════════════════════════════════╝\n"
+        "\n"
+        "  If this server runs in an ephemeral environment (containers,\n"
+        "  serverless, CI) the identity will be lost on restart unless\n"
+        "  you persist the private key.\n"
+        "\n"
+        "  Add to your secrets manager / .env:\n"
+        "\n"
+        "    CAPISCIO_SERVER_PRIVATE_KEY_PEM=\""  # noqa: E501
+        + private_key_pem.replace("\n", "\\n")
+        + "\"\n"
+        "\n"
+        "  The DID will be re-derived automatically on startup.\n"
+    )
 
 
 # ---------------------------------------------------------------------------
@@ -245,40 +314,49 @@ class MCPServerIdentity:
 
         did: Optional[str] = None
         private_key_pem: Optional[str] = None
+        pub_pem: Optional[str] = None
+        is_new_identity = False
 
-        # Step 2: Check for existing keys (idempotency)
-        if private_key_path.exists() and did_file.exists():
-            logger.info("Found existing keys for server %s — recovering identity", server_id)
-            did = did_file.read_text().strip()
-            private_key_pem = private_key_path.read_text()
-            logger.info("Recovered DID: %s", did)
+        # ------------------------------------------------------------------
+        # Step 2: Resolve private key — env var → local file → generate new
+        # ------------------------------------------------------------------
+        env_pem = os.environ.get(ENV_SERVER_PRIVATE_KEY)
 
-            # Re-register (handles server resets; 409/already-exists is fine)
-            if pub_key_path.exists():
-                pub_key_pem = pub_key_path.read_text()
-                try:
-                    await register_server_identity(
-                        server_id=server_id,
-                        api_key=api_key,
-                        did=did,
-                        public_key=pub_key_pem,
-                        ca_url=server_url,
-                    )
-                    logger.debug("Re-registered server identity (idempotent)")
-                except RegistrationError as exc:
-                    logger.debug("Re-registration returned: %s — continuing", exc)
+        if env_pem:
+            # --- Source: environment variable ---
+            env_pem = env_pem.replace("\\n", "\n")  # Handle escaped newlines
+            _, private_key_pem, pub_pem, did = _load_private_key_pem(env_pem)
+            logger.info("Loaded server identity from %s: %s", ENV_SERVER_PRIVATE_KEY, did)
+
+            # Persist to disk so subsequent restarts can use local file
+            private_key_path.write_text(private_key_pem)
+            os.chmod(private_key_path, 0o600)
+            pub_key_path.write_text(pub_pem)
+            did_file.write_text(did)
+
+        elif private_key_path.exists():
+            # --- Source: local file ---
+            raw_pem = private_key_path.read_text()
+            _, private_key_pem, pub_pem, did = _load_private_key_pem(raw_pem)
+            logger.info("Recovered server identity from local keys: %s", did)
+
+            # Ensure public key & DID files are consistent
+            pub_key_path.write_text(pub_pem)
+            did_file.write_text(did)
+
         else:
-            # Step 3: Generate new keypair
+            # --- Source: generate new keypair ---
+            is_new_identity = True
             logger.info("Generating Ed25519 keypair for MCP server %s...", server_id)
             keys = await generate_server_keypair(output_dir=str(effective_keys_dir))
             did = keys["did_key"]
             private_key_pem = keys["private_key_pem"]
+            pub_pem = keys.get("public_key_pem", "")
 
             # Persist DID for future recovery
             did_file.write_text(did)
 
             # Persist public key for re-registration on recovery
-            pub_pem: str = keys.get("public_key_pem", "")
             if pub_pem:
                 pub_key_path.write_text(pub_pem)
 
@@ -292,16 +370,28 @@ class MCPServerIdentity:
                 private_key_path.write_text(private_key_pem)
                 os.chmod(private_key_path, 0o600)
 
-            # Step 4: Register with registry
-            logger.info("Registering DID %s with registry...", did)
+        # ------------------------------------------------------------------
+        # Step 3: Register DID with registry (idempotent — safe to repeat)
+        # ------------------------------------------------------------------
+        assert did is not None  # narrowing for type checkers
+        effective_pub_pem = pub_pem or ""
+        try:
             await register_server_identity(
                 server_id=server_id,
                 api_key=api_key,
                 did=did,
-                public_key=pub_pem,
+                public_key=effective_pub_pem,
                 ca_url=server_url,
             )
             logger.info("Server identity registered: %s", did)
+        except RegistrationError as exc:
+            logger.debug("Registration returned: %s — continuing", exc)
+
+        # ------------------------------------------------------------------
+        # Step 3.5: First-run capture hint & rotation warning
+        # ------------------------------------------------------------------
+        if is_new_identity:
+            _log_key_capture_hint(server_id, private_key_pem)
 
         # Step 5: Issue initial badge and start keeper
         badge: Optional[str] = None
@@ -345,6 +435,8 @@ class MCPServerIdentity:
         - ``CAPISCIO_API_KEY`` (required)
         - ``CAPISCIO_SERVER_URL`` (optional, default: production)
         - ``CAPISCIO_SERVER_DOMAIN`` (optional, default: hostname from SERVER_URL)
+        - ``CAPISCIO_SERVER_PRIVATE_KEY_PEM`` (optional — PEM-encoded Ed25519
+          private key for ephemeral environments; printed on first generation)
 
         Additional keyword arguments are forwarded to :meth:`connect`.
 

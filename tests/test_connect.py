@@ -13,8 +13,11 @@ import pytest
 from capiscio_mcp.connect import (
     MCPServerIdentity,
     _issue_badge_sync,
+    _load_private_key_pem,
+    _log_key_capture_hint,
     DEFAULT_REGISTRY,
     DEFAULT_MCP_KEYS_DIR,
+    ENV_SERVER_PRIVATE_KEY,
 )
 from capiscio_mcp.keeper import ServerBadgeKeeper
 
@@ -25,6 +28,20 @@ FAKE_DID = "did:key:z6MkhaXgBZDvotDkL5257faiztiGiC2QtKLGpbnnEGta2doK"
 FAKE_BADGE = "eyJhbGciOiJFZERTQSJ9.eyJleHAiOjk5OTk5OTk5OTl9.fakesig"
 FAKE_PRIV_KEY_PEM = "-----BEGIN PRIVATE KEY-----\nfake\n-----END PRIVATE KEY-----\n"
 FAKE_PUB_KEY_PEM = "-----BEGIN PUBLIC KEY-----\nfake\n-----END PUBLIC KEY-----\n"
+
+
+def _make_real_ed25519_pem() -> tuple[str, str, str]:
+    """Generate a real Ed25519 keypair for tests that need valid crypto."""
+    from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PrivateKey
+    from cryptography.hazmat.primitives.serialization import (
+        Encoding, NoEncryption, PrivateFormat, PublicFormat,
+    )
+
+    key = Ed25519PrivateKey.generate()
+    priv_pem = key.private_bytes(Encoding.PEM, PrivateFormat.PKCS8, NoEncryption()).decode()
+    pub_pem = key.public_key().public_bytes(Encoding.PEM, PublicFormat.SubjectPublicKeyInfo).decode()
+    _, _, _, did = _load_private_key_pem(priv_pem)
+    return priv_pem, pub_pem, did
 
 
 # ---------------------------------------------------------------------------
@@ -195,6 +212,9 @@ class TestMCPServerIdentityConnect:
 
         with (
             patch("capiscio_mcp.connect.generate_server_keypair", new_callable=AsyncMock) as mock_gen,
+            patch("capiscio_mcp.connect._load_private_key_pem", return_value=(
+                None, FAKE_PRIV_KEY_PEM, FAKE_PUB_KEY_PEM, FAKE_DID,
+            )),
             patch("capiscio_mcp.connect.register_server_identity", new_callable=AsyncMock),
             patch("capiscio_mcp.connect._issue_badge", new_callable=AsyncMock, return_value=FAKE_BADGE),
             patch("capiscio_mcp.connect.ServerBadgeKeeper") as MockKeeper,
@@ -262,6 +282,98 @@ class TestMCPServerIdentityConnect:
         assert identity.badge is None
         assert identity._keeper is None
         assert identity.did == FAKE_DID
+
+    async def test_connect_uses_env_var_private_key(self, tmp_keys_dir):
+        """connect() should load identity from CAPISCIO_SERVER_PRIVATE_KEY_PEM."""
+        real_priv, real_pub, real_did = _make_real_ed25519_pem()
+
+        with (
+            patch.dict(os.environ, {ENV_SERVER_PRIVATE_KEY: real_priv}),
+            patch("capiscio_mcp.connect.generate_server_keypair", new_callable=AsyncMock) as mock_gen,
+            patch("capiscio_mcp.connect.register_server_identity", new_callable=AsyncMock),
+            patch("capiscio_mcp.connect._issue_badge", new_callable=AsyncMock, return_value=None),
+        ):
+            identity = await MCPServerIdentity.connect(
+                server_id=SERVER_ID,
+                api_key=API_KEY,
+                keys_dir=tmp_keys_dir,
+            )
+
+        # Should NOT have generated a new keypair
+        mock_gen.assert_not_called()
+        assert identity.did == real_did
+        # Should have persisted key to disk
+        assert (tmp_keys_dir / "private_key.pem").exists()
+        assert (tmp_keys_dir / "public_key.pem").exists()
+        assert (tmp_keys_dir / "did.txt").read_text() == real_did
+
+    async def test_connect_env_var_takes_precedence_over_local_file(self, tmp_keys_dir):
+        """Env var key should override a different key on disk."""
+        real_priv, real_pub, real_did = _make_real_ed25519_pem()
+
+        # Write a different (fake) key to disk
+        tmp_keys_dir.mkdir(parents=True, exist_ok=True)
+        (tmp_keys_dir / "private_key.pem").write_text(FAKE_PRIV_KEY_PEM)
+        (tmp_keys_dir / "did.txt").write_text(FAKE_DID)
+
+        with (
+            patch.dict(os.environ, {ENV_SERVER_PRIVATE_KEY: real_priv}),
+            patch("capiscio_mcp.connect.generate_server_keypair", new_callable=AsyncMock) as mock_gen,
+            patch("capiscio_mcp.connect.register_server_identity", new_callable=AsyncMock),
+            patch("capiscio_mcp.connect._issue_badge", new_callable=AsyncMock, return_value=None),
+        ):
+            identity = await MCPServerIdentity.connect(
+                server_id=SERVER_ID,
+                api_key=API_KEY,
+                keys_dir=tmp_keys_dir,
+            )
+
+        mock_gen.assert_not_called()
+        assert identity.did == real_did  # env var DID, not FAKE_DID
+
+    async def test_connect_logs_capture_hint_on_new_generation(self, tmp_keys_dir):
+        """connect() should log a capture hint when generating a new identity."""
+        fake_keys = {
+            "did_key": FAKE_DID,
+            "public_key_pem": FAKE_PUB_KEY_PEM,
+            "private_key_pem": FAKE_PRIV_KEY_PEM,
+            "key_id": "key-1",
+        }
+
+        with (
+            patch("capiscio_mcp.connect.generate_server_keypair", new_callable=AsyncMock, return_value=fake_keys),
+            patch("capiscio_mcp.connect.register_server_identity", new_callable=AsyncMock),
+            patch("capiscio_mcp.connect._issue_badge", new_callable=AsyncMock, return_value=None),
+            patch("capiscio_mcp.connect._log_key_capture_hint") as mock_hint,
+        ):
+            await MCPServerIdentity.connect(
+                server_id=SERVER_ID,
+                api_key=API_KEY,
+                keys_dir=tmp_keys_dir,
+            )
+
+        mock_hint.assert_called_once_with(SERVER_ID, FAKE_PRIV_KEY_PEM)
+
+    async def test_connect_no_capture_hint_on_recovery(self, tmp_keys_dir):
+        """connect() should NOT log a capture hint when recovering from local keys."""
+        tmp_keys_dir.mkdir(parents=True, exist_ok=True)
+        (tmp_keys_dir / "private_key.pem").write_text(FAKE_PRIV_KEY_PEM)
+
+        with (
+            patch("capiscio_mcp.connect._load_private_key_pem", return_value=(
+                None, FAKE_PRIV_KEY_PEM, FAKE_PUB_KEY_PEM, FAKE_DID,
+            )),
+            patch("capiscio_mcp.connect.register_server_identity", new_callable=AsyncMock),
+            patch("capiscio_mcp.connect._issue_badge", new_callable=AsyncMock, return_value=None),
+            patch("capiscio_mcp.connect._log_key_capture_hint") as mock_hint,
+        ):
+            await MCPServerIdentity.connect(
+                server_id=SERVER_ID,
+                api_key=API_KEY,
+                keys_dir=tmp_keys_dir,
+            )
+
+        mock_hint.assert_not_called()
 
 
 # ---------------------------------------------------------------------------
