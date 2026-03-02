@@ -620,6 +620,7 @@ class CapiscioMCPClient:
         verify_config: Optional[VerifyConfig] = None,
         badge: Optional[str] = None,
         api_key: Optional[str] = None,
+        env: Optional[Dict[str, str]] = None,
     ) -> None:
         """Initialize ``CapiscioMCPClient``.
 
@@ -633,6 +634,10 @@ class CapiscioMCPClient:
             verify_config: Full :class:`~capiscio_mcp.server.VerifyConfig`.
             badge: Client badge JWS for authentication.
             api_key: Client API key for authentication (alternative to badge).
+            env: Additional environment variables to pass to the server subprocess
+                (stdio transport only). All ``CAPISCIO_*`` variables from the
+                current process are forwarded automatically; use this to override
+                or extend them.
 
         Raises:
             ValueError: If neither ``server_url`` nor ``command`` is provided.
@@ -653,6 +658,7 @@ class CapiscioMCPClient:
         self.fail_on_unverified = fail_on_unverified
         self.require_pop = require_pop
         self.verify_config = verify_config or VerifyConfig(min_trust_level=min_trust_level)
+        self._extra_env = env or {}
 
         self._credential = CallerCredential(
             badge_jws=badge,
@@ -835,10 +841,21 @@ class CapiscioMCPClient:
             :exc:`NotImplementedError`: If HTTP transport is requested (not yet supported).
         """
         if self.command:
-            # Stdio transport — spawn the server subprocess
+            # Stdio transport — spawn the server subprocess.
+            # MCP's stdio_client only passes a small whitelist of env vars
+            # (HOME, PATH, etc.) to the subprocess by default.  Forward all
+            # CAPISCIO_* variables so the server can authenticate with the
+            # registry, then apply any caller-specified overrides.
+            capiscio_env = {
+                k: v
+                for k, v in os.environ.items()
+                if k.startswith("CAPISCIO_") or k == "MCP_SERVER_COMMAND"
+            }
+            subprocess_env = {**capiscio_env, **self._extra_env}
             server_params = StdioServerParameters(
                 command=self.command,
                 args=self.args,
+                env=subprocess_env if subprocess_env else None,
             )
             self._context_manager = stdio_client(server_params)
             try:
