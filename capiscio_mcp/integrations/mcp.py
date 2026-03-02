@@ -1,51 +1,61 @@
 """
-MCP SDK Integration — requires `pip install capiscio-mcp[mcp]`
+MCP SDK Integration — requires ``pip install capiscio-mcp[mcp]``
 
-Provides two separate integration classes:
-1. Server-side: CapiscioMCPServer (guard tools, disclose identity, PoP signing)
-2. Client-side: CapiscioMCPClient (verify server identity, PoP verification)
+Provides two integration classes:
 
-Usage (Server):
+1. **Server-side**: :class:`CapiscioMCPServer` — guard tools, disclose identity
+   via ``_meta`` in the initialize response, and sign PoP challenges.
+2. **Client-side**: :class:`CapiscioMCPClient` — verify server identity extracted
+   from ``_meta`` on connection, enforce ``min_trust_level``.
+
+Usage (Server)::
+
     from capiscio_mcp.integrations.mcp import CapiscioMCPServer
+    from capiscio_mcp import MCPServerIdentity
 
-    server = CapiscioMCPServer(
-        name="filesystem",
-        did="did:web:mcp.example.com:servers:filesystem",
-        badge="eyJhbGc...",
-        private_key_path="/path/to/key.pem",  # For PoP signing
+    identity = await MCPServerIdentity.connect(
+        server_id=os.environ["CAPISCIO_SERVER_ID"],
+        api_key=os.environ["CAPISCIO_API_KEY"],
     )
+
+    server = CapiscioMCPServer(identity=identity)
 
     @server.tool(min_trust_level=2)
     async def read_file(path: str) -> str:
         with open(path) as f:
             return f.read()
 
-    # Run the server
     server.run()
 
-Usage (Client):
+Usage (Client)::
+
     from capiscio_mcp.integrations.mcp import CapiscioMCPClient
 
     async with CapiscioMCPClient(
-        server_url="https://mcp.example.com",
-        min_trust_level=2,
-        require_pop=True,  # Require PoP verification
+        command="python server/main.py",
+        badge="eyJhbGc...",
+        min_trust_level=1,
+        fail_on_unverified=True,
     ) as client:
-        result = await client.call_tool("read_file", {"path": "/data/file.txt"})
+        result = await client.call_tool("list_files", {"directory": "/tmp"})
 """
 
 from __future__ import annotations
 
+import contextvars
 import logging
 import os
 from dataclasses import dataclass, field
 from functools import wraps
 from typing import Any, Callable, Coroutine, Dict, List, Optional, TypeVar, Union
 
-# Check if MCP SDK (FastMCP) is available
+# --------------------------------------------------------------------------
+# MCP server SDK (FastMCP)
+# --------------------------------------------------------------------------
 try:
     from mcp.server.fastmcp import FastMCP
     from mcp.types import Tool, TextContent
+
     MCP_AVAILABLE = True
 except ImportError:
     FastMCP = None  # type: ignore
@@ -53,9 +63,13 @@ except ImportError:
     TextContent = None  # type: ignore
     MCP_AVAILABLE = False
 
+# --------------------------------------------------------------------------
+# MCP client SDK
+# --------------------------------------------------------------------------
 try:
     from mcp.client.session import ClientSession as McpClientSession
     from mcp.client.stdio import stdio_client, StdioServerParameters
+
     MCP_CLIENT_AVAILABLE = True
 except ImportError:
     McpClientSession = None  # type: ignore
@@ -63,12 +77,15 @@ except ImportError:
     StdioServerParameters = None  # type: ignore
     MCP_CLIENT_AVAILABLE = False
 
-# Check if cryptography is available for PoP
+# --------------------------------------------------------------------------
+# Cryptography (PoP)
+# --------------------------------------------------------------------------
 try:
     from cryptography.hazmat.primitives.asymmetric.ed25519 import (
         Ed25519PrivateKey,
         Ed25519PublicKey,
     )
+
     CRYPTO_AVAILABLE = True
 except ImportError:
     Ed25519PrivateKey = None  # type: ignore
@@ -103,9 +120,146 @@ logger = logging.getLogger(__name__)
 
 T = TypeVar("T")
 
+# ---------------------------------------------------------------------------
+# _meta injection machinery
+# ---------------------------------------------------------------------------
+
+# Per-run contextvar carrying the _meta dict to inject into InitializeResult.
+# Set by CapiscioMCPServer.run() before starting the server; cleared on exit.
+_capiscio_meta_ctx: contextvars.ContextVar[Optional[Dict[str, Any]]] = contextvars.ContextVar(
+    "_capiscio_meta_ctx", default=None
+)
+
+
+def _install_credential_extraction(fastmcp_instance: "FastMCP") -> None:
+    """Wrap the registered ``CallToolRequest`` handler to extract caller credentials from ``_meta``.
+
+    For stdio (non-HTTP) transport, the caller's CapiscIO badge must travel in the
+    JSON-RPC ``_meta`` of each tool call request under the key
+    ``capiscio_caller_badge`` (API key: ``capiscio_caller_api_key``).
+
+    This is the stdio equivalent of the ``X-Capiscio-Badge`` HTTP header (RFC-002 §9.1).
+    The server-side ``@guard`` decorator reads the credential from the
+    ``_current_credential`` contextvar, which this wrapper sets before dispatching.
+
+    For HTTP-based transports, callers MUST send the badge in the
+    ``X-Capiscio-Badge`` header (takes precedence over ``Authorization: Bearer``).
+    """
+    try:
+        from mcp import types as _mcp_types
+        from capiscio_mcp.types import CallerCredential
+        from capiscio_mcp.guard import set_credential, _current_credential as _cred_ctx
+    except ImportError:
+        return
+
+    mcp_server = getattr(fastmcp_instance, "_mcp_server", None)
+    if mcp_server is None:
+        return
+
+    original_handler = mcp_server.request_handlers.get(_mcp_types.CallToolRequest)
+    if original_handler is None:
+        return
+
+    async def _handler_with_credential(req: _mcp_types.CallToolRequest) -> Any:
+        # Extract caller credentials from _meta (RFC-008 §Appendix-B / _meta.capiscio convention)
+        badge: Optional[str] = None
+        api_key: Optional[str] = None
+        meta = getattr(req.params, "meta", None)
+        if meta is not None:
+            extra: Dict[str, Any] = getattr(meta, "model_extra", None) or {}
+            badge = extra.get("capiscio_caller_badge")
+            api_key = extra.get("capiscio_caller_api_key")
+
+        if badge or api_key:
+            cred = CallerCredential(badge_jws=badge, api_key=api_key)
+            token = set_credential(cred)
+            try:
+                return await original_handler(req)
+            finally:
+                _cred_ctx.reset(token)
+        return await original_handler(req)
+
+    mcp_server.request_handlers[_mcp_types.CallToolRequest] = _handler_with_credential
+    logger.debug("CapiscIO: installed caller credential extraction from _meta on CallToolRequest")
+
+
+def _patch_server_session_once() -> bool:
+    """Idempotently patch ``ServerSession._received_request`` to inject ``_meta``.
+
+    The patch wraps ``responder.respond`` for ``InitializeRequest`` messages so
+    that the ``meta`` field on the returned ``InitializeResult`` is set from the
+    ``_capiscio_meta_ctx`` contextvar.  All other logic (protocol-version
+    negotiation, state transitions) continues to run in the original method.
+
+    Returns:
+        ``True`` if the patch is now in place, ``False`` if the MCP SDK is not
+        installed.
+    """
+    try:
+        from mcp.server.session import ServerSession
+        from mcp import types as _mcp_types
+    except ImportError:
+        return False
+
+    if getattr(ServerSession, "_capiscio_meta_patched", False):
+        return True
+
+    _original_received_request = ServerSession._received_request
+
+    @wraps(_original_received_request)
+    async def _patched_received_request(
+        session_self: Any,
+        responder: Any,
+    ) -> None:
+        meta = _capiscio_meta_ctx.get()
+
+        # Fast path: no meta to inject — delegate straight to original
+        if meta is None:
+            await _original_received_request(session_self, responder)
+            return
+
+        # Only intercept InitializeRequest messages
+        try:
+            req_root = responder.request.root
+        except AttributeError:
+            await _original_received_request(session_self, responder)
+            return
+
+        if not isinstance(req_root, _mcp_types.InitializeRequest):
+            await _original_received_request(session_self, responder)
+            return
+
+        # Wrap responder.respond to inject _meta into the InitializeResult
+        _original_respond = responder.respond
+
+        async def _respond_with_meta(result: Any) -> None:
+            try:
+                # ServerResult is a RootModel; result.root is InitializeResult
+                inner = getattr(result, "root", result)
+                if isinstance(inner, _mcp_types.InitializeResult):
+                    inner.meta = meta
+            except Exception as exc:
+                logger.debug("_meta injection: failed to set meta on result: %s", exc)
+            await _original_respond(result)
+
+        responder.respond = _respond_with_meta
+        try:
+            await _original_received_request(session_self, responder)
+        finally:
+            responder.respond = _original_respond
+
+    ServerSession._received_request = _patched_received_request  # type: ignore[method-assign]
+    ServerSession._capiscio_meta_patched = True  # type: ignore[attr-defined]
+    logger.debug("CapiscIO: patched ServerSession._received_request for _meta injection")
+    return True
+
+
+# ---------------------------------------------------------------------------
+# Helpers
+# ---------------------------------------------------------------------------
+
 
 def _require_mcp_server() -> None:
-    """Raise ImportError if MCP server SDK (FastMCP) is not available."""
     if not MCP_AVAILABLE:
         raise ImportError(
             "MCP SDK integration requires the 'mcp' package. "
@@ -114,7 +268,6 @@ def _require_mcp_server() -> None:
 
 
 def _require_mcp_client() -> None:
-    """Raise ImportError if MCP client SDK is not available."""
     if not MCP_CLIENT_AVAILABLE:
         raise ImportError(
             "MCP client integration requires the 'mcp' package. "
@@ -122,43 +275,59 @@ def _require_mcp_client() -> None:
         )
 
 
+# ---------------------------------------------------------------------------
+# CapiscioMCPServer
+# ---------------------------------------------------------------------------
+
+
 class CapiscioMCPServer:
-    """
-    MCP Server with CapiscIO identity disclosure, PoP signing, and tool guarding.
-    
+    """MCP Server with CapiscIO identity disclosure, PoP signing, and tool guarding.
+
     This class wraps FastMCP to:
-    1. Automatically inject identity into initialize response _meta
-    2. Sign PoP challenges to prove key ownership (RFC-007)
-    3. Guard registered tools with @guard decorator for trust enforcement
-    
-    Attributes:
-        name: Server name
-        did: Server DID (did:web:... or did:key:...)
-        badge: Server trust badge JWS (optional but recommended)
-        default_min_trust_level: Default minimum trust level for tools
-        pop_enabled: Whether PoP signing is available
-    
-    Example:
+
+    1. Automatically inject server identity (DID, badge) into the ``_meta``
+       field of MCP ``initialize`` responses (RFC-007 §6.2).
+    2. Sign PoP challenges from clients to prove key ownership (RFC-007).
+    3. Guard registered tools with trust-level requirements (RFC-006).
+
+    The ``_meta`` injection works by patching
+    ``mcp.server.session.ServerSession._received_request`` **once** (globally,
+    idempotently) at server start-time.  A per-invocation contextvar carries the
+    meta dict so that only this server's responses are affected.
+
+    Example::
+
+        from capiscio_mcp import MCPServerIdentity
+        from capiscio_mcp.integrations.mcp import CapiscioMCPServer
+
+        identity = await MCPServerIdentity.connect(
+            server_id=os.environ["CAPISCIO_SERVER_ID"],
+            api_key=os.environ["CAPISCIO_API_KEY"],
+        )
+
+        server = CapiscioMCPServer(identity=identity)
+
+        @server.tool(min_trust_level=2)
+        async def read_file(path: str) -> str:
+            with open(path) as f:
+                return f.read()
+
+        server.run()
+
+    You can also supply credentials directly (without ``MCPServerIdentity``)::
+
         server = CapiscioMCPServer(
             name="filesystem",
             did="did:web:mcp.example.com:servers:filesystem",
             badge=os.environ.get("SERVER_BADGE"),
             private_key_path="/path/to/server.key.pem",
         )
-        
-        @server.tool(min_trust_level=2)
-        async def read_file(path: str) -> str:
-            with open(path) as f:
-                return f.read()
-        
-        # Run the server
-        server.run()
     """
-    
+
     def __init__(
         self,
-        name: str,
-        did: str,
+        name: Optional[str] = None,
+        did: Optional[str] = None,
         badge: Optional[str] = None,
         default_min_trust_level: int = 0,
         version: str = "1.0.0",
@@ -166,117 +335,131 @@ class CapiscioMCPServer:
         private_key_path: Optional[str] = None,
         private_key_pem: Optional[Union[str, bytes]] = None,
         key_id: Optional[str] = None,
-    ):
-        """
-        Initialize CapiscIO MCP Server.
-        
+        # Convenience: pass MCPServerIdentity directly
+        identity: Optional[Any] = None,
+    ) -> None:
+        """Initialize ``CapiscioMCPServer``.
+
         Args:
-            name: Server name (shown to clients)
-            did: Server DID for identity disclosure
-            badge: Server badge JWS for identity verification
-            default_min_trust_level: Default minimum trust level for tools
-            version: Server version string
-            private_key: Ed25519 private key for PoP signing (optional)
-            private_key_path: Path to PEM file containing private key (optional)
-            private_key_pem: PEM-encoded private key string/bytes (optional)
-            key_id: Key ID for JWS header (defaults to DID#keys-1)
+            name: Server name shown to clients.
+            did: Server DID for identity disclosure.
+            badge: Server badge JWS for client verification.
+            default_min_trust_level: Default minimum trust level for tools.
+            version: Server version string.
+            private_key: ``Ed25519PrivateKey`` object for PoP signing (optional).
+            private_key_path: Path to PEM file containing private key (optional).
+            private_key_pem: PEM-encoded private key string/bytes (optional).
+            key_id: Key ID for JWS header (defaults to ``{did}#keys-1``).
+            identity: :class:`~capiscio_mcp.connect.MCPServerIdentity` instance.
+                      When provided, ``name``, ``did``, ``badge``, and
+                      ``private_key_pem`` are derived from it automatically.
         """
         _require_mcp_server()
-        
-        self.name = name
+
+        # Accept MCPServerIdentity as a convenience shortcut
+        if identity is not None:
+            name = name or getattr(identity, "server_id", "mcp-server")
+            if did is None:
+                did = getattr(identity, "did", None)
+            if badge is None:
+                badge = identity.get_badge() if callable(getattr(identity, "get_badge", None)) else getattr(identity, "badge", None)
+            if private_key_pem is None and private_key is None and private_key_path is None:
+                private_key_pem = getattr(identity, "private_key_pem", None)
+
+        if not did:
+            raise ValueError("'did' is required (or provide an 'identity' with a DID)")
+
+        self.name = name or "mcp-server"
         self.did = did
         self.badge = badge
         self.default_min_trust_level = default_min_trust_level
         self.version = version
-        
+
         # Load private key for PoP signing
         self._private_key: Optional["Ed25519PrivateKey"] = None
         self._key_id = key_id or f"{did}#keys-1"
-        
+
         if private_key is not None:
             self._private_key = private_key
         elif private_key_path is not None:
             self._load_private_key_from_file(private_key_path)
         elif private_key_pem is not None:
             self._private_key = load_private_key_from_pem(private_key_pem)
-        
+
         # Create underlying FastMCP server
-        self._server = FastMCP(name)
+        self._server = FastMCP(self.name)
         self._tools: Dict[str, Callable] = {}
         self._tool_configs: Dict[str, GuardConfig] = {}
-        
-        self._setup_identity_injection()
-    
+
+        # Attempt to install the session patch so _meta can be injected at run-time
+        if MCP_AVAILABLE:
+            _patch_server_session_once()
+            # Install handler wrapper that extracts caller credentials from _meta
+            # for stdio transport (where HTTP headers are not available).
+            _install_credential_extraction(self._server)
+
+    # ------------------------------------------------------------------
+    # Private helpers
+    # ------------------------------------------------------------------
+
     def _load_private_key_from_file(self, path: str) -> None:
-        """Load private key from PEM file."""
         if not CRYPTO_AVAILABLE:
             logger.warning(
                 "PoP signing requires 'cryptography' package. "
                 "Install with: pip install capiscio-mcp[crypto]"
             )
             return
-        
         try:
-            with open(path, "rb") as f:
-                pem_data = f.read()
+            with open(path, "rb") as fh:
+                pem_data = fh.read()
             self._private_key = load_private_key_from_pem(pem_data)
-            logger.debug(f"Loaded private key from {path}")
-        except Exception as e:
-            logger.warning(f"Failed to load private key from {path}: {e}")
-    
+            logger.debug("Loaded private key from %s", path)
+        except Exception as exc:
+            logger.warning("Failed to load private key from %s: %s", path, exc)
+
+    # ------------------------------------------------------------------
+    # Public properties
+    # ------------------------------------------------------------------
+
     @property
     def pop_enabled(self) -> bool:
-        """Check if PoP signing is available."""
+        """Whether PoP signing is available (private key loaded)."""
         return self._private_key is not None
-    
-    def _setup_identity_injection(self) -> None:
-        """
-        Set up identity injection into initialize response.
-        
-        Per RFC-007 §6.2, server identity is disclosed via _meta in
-        the initialize response.
-        """
-        # The MCP SDK provides hooks for customizing responses
-        # This implementation depends on the specific MCP SDK version
-        # For now, we'll store the identity info to be included
-        self._identity_meta = {
-            "capiscio_server_did": self.did,
-        }
-        if self.badge:
-            self._identity_meta["capiscio_server_badge"] = self.badge
-    
+
+    @property
+    def server(self) -> "FastMCP":
+        """The underlying :class:`~mcp.server.fastmcp.FastMCP` instance."""
+        return self._server
+
+    @property
+    def identity_meta(self) -> Dict[str, str]:
+        """The identity ``_meta`` dict (DID + badge) used in initialize responses."""
+        return self._identity_meta.copy()
+
+    # ------------------------------------------------------------------
+    # Identity meta builder
+    # ------------------------------------------------------------------
+
     def create_initialize_response_meta(
         self,
         request_meta: Optional[Dict[str, Any]] = None,
     ) -> Dict[str, Any]:
-        """
-        Create the _meta object for initialize response.
-        
-        This method should be called when building the initialize response.
-        It includes:
-        1. Server identity (DID, badge)
-        2. PoP response (if client sent PoP request and we have a private key)
-        
+        """Build the ``_meta`` dict for an ``initialize`` response (RFC-007 §6.2).
+
+        Includes server identity (DID, badge) and, if the client sent a PoP nonce
+        and a private key is loaded, a PoP signature.
+
         Args:
-            request_meta: The _meta from the initialize request (for PoP)
-            
+            request_meta: The ``_meta`` from the ``initialize`` *request* (for PoP).
+
         Returns:
-            Dict to include as _meta in initialize response
-            
-        Example:
-            # In your initialize handler
-            def handle_initialize(request):
-                response_meta = server.create_initialize_response_meta(
-                    request_meta=request.params.get("_meta")
-                )
-                return InitializeResult(
-                    capabilities=...,
-                    _meta=response_meta,
-                )
+            Dict to be included as ``_meta`` in the ``InitializeResult``.
         """
-        meta = self._identity_meta.copy()
-        
-        # Handle PoP if client sent nonce and we have a key
+        meta: Dict[str, Any] = {"capiscio_server_did": self.did}
+        if self.badge:
+            meta["capiscio_server_badge"] = self.badge
+
+        # Attach PoP signature if client sent a nonce and we have a key
         if self._private_key is not None and request_meta is not None:
             pop_request = PoPRequest.from_meta(request_meta)
             if pop_request is not None:
@@ -288,11 +471,23 @@ class CapiscioMCPServer:
                     )
                     meta.update(pop_response.to_meta())
                     logger.debug("Added PoP signature to initialize response")
-                except Exception as e:
-                    logger.warning(f"Failed to create PoP response: {e}")
-        
+                except Exception as exc:
+                    logger.warning("Failed to create PoP response: %s", exc)
+
         return meta
-    
+
+    # Internal alias used by _setup_identity_injection (legacy compat)
+    @property
+    def _identity_meta(self) -> Dict[str, Any]:
+        meta: Dict[str, Any] = {"capiscio_server_did": self.did}
+        if self.badge:
+            meta["capiscio_server_badge"] = self.badge
+        return meta
+
+    # ------------------------------------------------------------------
+    # Tool registration
+    # ------------------------------------------------------------------
+
     def tool(
         self,
         name: Optional[str] = None,
@@ -300,128 +495,112 @@ class CapiscioMCPServer:
         min_trust_level: Optional[int] = None,
         config: Optional[GuardConfig] = None,
     ) -> Callable[[Callable[..., Coroutine[Any, Any, T]]], Callable[..., Coroutine[Any, Any, T]]]:
-        """
-        Register a tool with CapiscIO guard.
-        
-        This decorator:
-        1. Registers the function as an MCP tool via FastMCP
-        2. Wraps it with @guard for access control based on caller trust level
-        
+        """Register a tool with CapiscIO trust-level guarding.
+
+        Wraps the function with :func:`~capiscio_mcp.guard.guard` for access
+        control based on caller trust level, then registers it with FastMCP.
+
         Args:
-            name: Tool name (default: function name)
-            description: Tool description
-            min_trust_level: Minimum trust level (overrides default)
-            config: Full guard configuration
-        
-        Returns:
-            Decorator function
-        
-        Example:
+            name: Tool name (defaults to function name).
+            description: Tool description (defaults to docstring).
+            min_trust_level: Minimum trust level (overrides server default).
+            config: Full :class:`~capiscio_mcp.guard.GuardConfig`.
+
+        Example::
+
             @server.tool(min_trust_level=2)
             async def execute_query(sql: str) -> list[dict]:
                 ...
         """
+
         def decorator(
             func: Callable[..., Coroutine[Any, Any, T]]
         ) -> Callable[..., Coroutine[Any, Any, T]]:
             tool_name = name or func.__name__
             tool_description = description or func.__doc__ or f"Tool: {tool_name}"
-            
-            # Build effective config
+
             effective_config = config or GuardConfig()
             if min_trust_level is not None:
                 effective_config.min_trust_level = min_trust_level
             elif effective_config.min_trust_level == 0:
                 effective_config.min_trust_level = self.default_min_trust_level
-            
-            # Apply guard decorator
+
             guarded_func = guard(config=effective_config, tool_name=tool_name)(func)
-            
-            # Store for reference
+
             self._tools[tool_name] = guarded_func
             self._tool_configs[tool_name] = effective_config
-            
-            # Register with FastMCP server using its @tool decorator
-            # FastMCP will handle the MCP protocol details
+
             self._server.tool(name=tool_name, description=tool_description)(guarded_func)
-            
-            logger.debug(f"Registered tool '{tool_name}' with trust level {effective_config.min_trust_level}")
-            
+
+            logger.debug(
+                "Registered tool '%s' with trust level %d",
+                tool_name,
+                effective_config.min_trust_level,
+            )
             return guarded_func
-        
+
         return decorator
-    
-    @property
-    def server(self) -> "FastMCP":
-        """Access the underlying FastMCP server."""
-        return self._server
-    
-    @property
-    def identity_meta(self) -> Dict[str, str]:
-        """Get the identity metadata for initialize response."""
-        return self._identity_meta.copy()
-    
+
+    # ------------------------------------------------------------------
+    # Run
+    # ------------------------------------------------------------------
+
     def run(self, transport: str = "stdio") -> None:
-        """
-        Run the server with the specified transport.
-        
+        """Run the server with ``_meta`` identity injection enabled.
+
+        Sets ``_capiscio_meta_ctx`` so that the patched ``ServerSession``
+        injects the CapiscIO identity into every ``initialize`` response for
+        the lifetime of this call.
+
         Args:
-            transport: Transport type - "stdio" (default) or "streamable-http"
-        
-        Example:
-            server.run()  # stdio transport
-            server.run(transport="streamable-http")  # HTTP transport
+            transport: ``"stdio"`` (default) or ``"streamable-http"``.
         """
-        self._server.run(transport=transport)
-    
+        meta = self.create_initialize_response_meta()
+        token = _capiscio_meta_ctx.set(meta)
+        try:
+            self._server.run(transport=transport)
+        finally:
+            _capiscio_meta_ctx.reset(token)
+
     def run_stdio(self) -> None:
-        """Run the server over stdio transport.
-        
-        Deprecated: Use run() instead.
-        """
-        # For backwards compatibility, delegate to run()
-        self._server.run(transport="stdio")
-    
+        """Run over stdio transport (deprecated — use :meth:`run` instead)."""
+        self.run(transport="stdio")
+
     def run_sse(self, port: int = 8080) -> None:
-        """Run the server over SSE transport.
-        
-        Deprecated: Use run(transport="sse") instead. SSE is deprecated in favor of streamable-http.
-        """
-        logger.warning("SSE transport is deprecated, use streamable-http instead")
-        self._server.run(transport="sse")
+        """Run over SSE transport (deprecated — use ``run(transport='streamable-http')``)."""
+        logger.warning("SSE transport is deprecated; use streamable-http instead")
+        self.run(transport="sse")
+
+
+# ---------------------------------------------------------------------------
+# CapiscioMCPClient
+# ---------------------------------------------------------------------------
 
 
 class CapiscioMCPClient:
-    """
-    MCP Client with automatic server identity and PoP verification.
-    
-    This class wraps MCP client functionality to:
-    1. Generate PoP request (nonce) for initialize request
-    2. Verify server identity and PoP response on connection
-    3. Enforce trust level requirements
-    4. Include caller credentials in tool requests
-    
-    Attributes:
-        server_url: URL of the MCP server
-        min_trust_level: Minimum required trust level
-        fail_on_unverified: If True, raise on unverified servers
-        require_pop: If True, require PoP verification (did:key servers)
-        pop_verified: Whether PoP verification succeeded
-    
-    Example:
+    """MCP Client with automatic server identity and PoP verification.
+
+    On connection this client:
+
+    1. Calls ``session.initialize()`` to get the MCP ``InitializeResult``.
+    2. Extracts ``capiscio_server_did`` and ``capiscio_server_badge`` from
+       ``result.meta`` (the ``_meta`` dict in the JSON response).
+    3. Calls :func:`~capiscio_mcp.server.verify_server` with those values.
+    4. Enforces ``min_trust_level`` and ``fail_on_unverified`` constraints.
+
+    Example::
+
         async with CapiscioMCPClient(
-            server_url="https://mcp.example.com",
-            min_trust_level=2,
-            require_pop=True,
-            badge="eyJhbGc...",  # Your client badge
+            command="python server/main.py",
+            badge=agent.badge,
+            min_trust_level=1,
+            fail_on_unverified=True,
         ) as client:
-            # Server identity and PoP already verified
-            print(f"Trusted at level {client.server_trust_level}")
-            print(f"PoP verified: {client.pop_verified}")
-            
-            result = await client.call_tool("read_file", {"path": "/data/file.txt"})
-    
-    For stdio transport (subprocess server):
+            print(f"Server verified at level {client.server_trust_level}")
+            files = await client.call_tool("list_files", {"directory": "/tmp"})
+
+    For stdio transport (subprocess server)::
+
         async with CapiscioMCPClient(
             command="python",
             args=["my_mcp_server.py"],
@@ -429,7 +608,7 @@ class CapiscioMCPClient:
         ) as client:
             result = await client.call_tool("my_tool", {"arg": "value"})
     """
-    
+
     def __init__(
         self,
         server_url: Optional[str] = None,
@@ -441,33 +620,32 @@ class CapiscioMCPClient:
         verify_config: Optional[VerifyConfig] = None,
         badge: Optional[str] = None,
         api_key: Optional[str] = None,
-    ):
-        """
-        Initialize CapiscIO MCP Client.
-        
+    ) -> None:
+        """Initialize ``CapiscioMCPClient``.
+
         Args:
-            server_url: URL of the MCP server (for HTTP transport)
-            command: Command to run server (for stdio transport)
-            args: Arguments for command (for stdio transport)
-            min_trust_level: Minimum required server trust level
-            fail_on_unverified: If True, raise when server doesn't disclose identity
-            require_pop: If True, require PoP verification for did:key servers
-            verify_config: Full verification configuration
-            badge: Client badge for authentication (recommended)
-            api_key: Client API key for authentication (alternative)
-            
+            server_url: MCP server URL (HTTP transport — not yet implemented).
+            command: Command to launch server process (stdio transport).
+            args: Arguments for the server command.
+            min_trust_level: Minimum required server trust level.
+            fail_on_unverified: If ``True``, raise when server doesn't disclose identity.
+            require_pop: If ``True``, require PoP verification for ``did:key`` servers.
+            verify_config: Full :class:`~capiscio_mcp.server.VerifyConfig`.
+            badge: Client badge JWS for authentication.
+            api_key: Client API key for authentication (alternative to badge).
+
         Raises:
-            ValueError: If neither server_url nor command is provided
+            ValueError: If neither ``server_url`` nor ``command`` is provided.
+            ImportError: If the ``mcp`` package is not installed.
         """
         _require_mcp_client()
-        
-        # Ensure at least one transport method is configured
+
         if server_url is None and command is None:
             raise ValueError(
                 "Either server_url or command must be provided to CapiscioMCPClient "
                 "to select an HTTP or stdio transport."
             )
-        
+
         self.server_url = server_url
         self.command = command
         self.args = args or []
@@ -475,97 +653,85 @@ class CapiscioMCPClient:
         self.fail_on_unverified = fail_on_unverified
         self.require_pop = require_pop
         self.verify_config = verify_config or VerifyConfig(min_trust_level=min_trust_level)
-        
-        # Client credentials
+
         self._credential = CallerCredential(
             badge_jws=badge,
             api_key=api_key,
         )
-        
+
         self._session: Optional[McpClientSession] = None
         self._context_manager: Optional[Any] = None
         self._verify_result: Optional[VerifyResult] = None
-        
+
         # PoP state
         self._pop_request: Optional[PoPRequest] = None
         self._pop_response: Optional[PoPResponse] = None
         self._pop_verified: bool = False
-    
+
+    # ------------------------------------------------------------------
+    # Initialize request _meta (PoP nonce)
+    # ------------------------------------------------------------------
+
     def create_initialize_request_meta(self) -> Dict[str, Any]:
-        """
-        Create the _meta object for initialize request.
-        
-        This should be called when building the initialize request.
-        It generates a PoP nonce to be signed by the server.
-        
+        """Create the ``_meta`` dict for the ``initialize`` request (PoP nonce).
+
         Returns:
-            Dict to include as _meta in initialize request
-            
-        Example:
-            # In your client code
-            meta = client.create_initialize_request_meta()
-            result = await session.initialize(
-                client_info=ClientInfo(...),
-                _meta=meta,
-            )
+            Dict to include as ``_meta`` in the ``initialize`` request.
         """
         self._pop_request = generate_pop_request()
         return self._pop_request.to_meta()
-    
+
+    # ------------------------------------------------------------------
+    # Server verification
+    # ------------------------------------------------------------------
+
     def verify_initialize_response(
         self,
         response_meta: Optional[Dict[str, Any]],
         server_public_key: Optional["Ed25519PublicKey"] = None,
     ) -> bool:
-        """
-        Verify the initialize response including PoP.
-        
-        This should be called after receiving the initialize response.
-        It extracts the PoP signature and verifies it.
-        
+        """Verify the ``initialize`` response including optional PoP.
+
         Args:
-            response_meta: The _meta from initialize response
-            server_public_key: Server's public key for PoP verification
-                              (if None, will try to extract from did:key)
-        
+            response_meta: The ``_meta`` dict from the ``InitializeResult``.
+            server_public_key: Server public key for PoP (auto-extracted from
+                ``did:key`` if not provided).
+
         Returns:
-            True if PoP verification succeeded, False otherwise
-            
+            ``True`` if PoP verification succeeded, ``False`` otherwise.
+
         Raises:
-            PoPSignatureError: If PoP verification fails and require_pop=True
+            :class:`~capiscio_mcp.pop.PoPSignatureError`: If PoP is required and fails.
         """
         if response_meta is None:
             logger.debug("No _meta in initialize response")
             return False
-        
-        # Extract PoP response
+
         self._pop_response = PoPResponse.from_meta(response_meta)
         if self._pop_response is None:
             logger.debug("No PoP response in initialize response")
             return False
-        
+
         if self._pop_request is None:
             logger.warning("PoP response received but no request was sent")
             return False
-        
-        # Get public key for verification
+
         if server_public_key is None:
-            # Try to extract from server DID
             server_did = response_meta.get("capiscio_server_did")
             if server_did and server_did.startswith("did:key:"):
                 try:
                     server_public_key = extract_public_key_from_did_key(server_did)
-                except Exception as e:
-                    logger.warning(f"Failed to extract public key from DID: {e}")
+                except Exception as exc:
+                    logger.warning("Failed to extract public key from DID: %s", exc)
                     if self.require_pop:
-                        raise PoPSignatureError(f"Cannot extract public key from {server_did}")
+                        raise PoPSignatureError(
+                            f"Cannot extract public key from {server_did}"
+                        )
                     return False
             else:
-                # For did:web, we'd need to fetch DID document
-                logger.debug(f"Cannot verify PoP for non-did:key: {server_did}")
+                logger.debug("Cannot verify PoP for non-did:key DID: %s", server_did)
                 return False
-        
-        # Verify PoP
+
         try:
             verify_pop_response(
                 request=self._pop_request,
@@ -575,48 +741,101 @@ class CapiscioMCPClient:
             self._pop_verified = True
             logger.info("PoP verification succeeded")
             return True
-        except PoPError as e:
-            logger.warning(f"PoP verification failed: {e}")
+        except PoPError as exc:
+            logger.warning("PoP verification failed: %s", exc)
             if self.require_pop:
                 raise
             return False
-    
+
+    async def _verify_server_from_meta(self, meta: Optional[Dict[str, Any]]) -> None:
+        """Extract server identity from ``_meta`` and call :func:`verify_server`.
+
+        Sets ``self._verify_result`` and enforces ``min_trust_level`` /
+        ``fail_on_unverified`` constraints.
+
+        Args:
+            meta: The ``_meta`` dict from ``InitializeResult.meta``.
+
+        Raises:
+            :class:`~capiscio_mcp.errors.ServerVerifyError`: If constraints are violated.
+        """
+        if not meta or not isinstance(meta, dict):
+            if self.fail_on_unverified and self.min_trust_level > 0:
+                raise ServerVerifyError(
+                    f"Server did not disclose identity (_meta missing) but "
+                    f"min_trust_level={self.min_trust_level} is required"
+                )
+            logger.debug("Server did not disclose identity (_meta absent or non-dict)")
+            return
+
+        server_did = meta.get("capiscio_server_did")
+        server_badge = meta.get("capiscio_server_badge")
+
+        if not server_did:
+            if self.fail_on_unverified and self.min_trust_level > 0:
+                raise ServerVerifyError(
+                    "Server _meta does not contain capiscio_server_did"
+                )
+            logger.debug("Server _meta has no capiscio_server_did")
+            return
+
+        logger.info("Verifying server identity: DID=%s", server_did)
+        self._verify_result = await verify_server(
+            server_did=server_did,
+            server_badge=server_badge,
+            config=self.verify_config,
+        )
+
+        state = self._verify_result.state
+        trust_level = self._verify_result.trust_level or 0
+
+        logger.info(
+            "Server verification result: state=%s trust_level=%d",
+            state,
+            trust_level,
+        )
+
+        if self.fail_on_unverified and state == ServerState.UNVERIFIED_ORIGIN:
+            raise ServerVerifyError(
+                f"Server identity could not be verified (state={state.value})"
+            )
+
+        if trust_level < self.min_trust_level:
+            raise ServerVerifyError(
+                f"Server trust level {trust_level} is below required "
+                f"min_trust_level={self.min_trust_level}"
+            )
+
+    # ------------------------------------------------------------------
+    # Context manager / connect / close
+    # ------------------------------------------------------------------
+
     @property
     def pop_verified(self) -> bool:
         """Whether PoP verification succeeded."""
         return self._pop_verified
-    
+
     async def __aenter__(self) -> "CapiscioMCPClient":
-        """
-        Async context manager entry.
-        
-        Connects to server and verifies identity.
-        """
         await self.connect()
         return self
-    
+
     async def __aexit__(self, exc_type: Any, exc_val: Any, exc_tb: Any) -> None:
-        """Async context manager exit."""
         await self.close()
-    
+
     async def connect(self) -> None:
-        """
-        Connect to MCP server.
-        
+        """Connect to the MCP server and verify its identity.
+
         For stdio transport, spawns the server process.
-        For HTTP transport, connects to the server URL (not yet implemented).
-        
-        Note:
-            Server identity verification (min_trust_level, fail_on_unverified) is
-            not yet functional due to MCP SDK limitations. The SDK does not currently
-            expose _meta from the initialize response, which is needed to extract
-            server DID and badge. Server-side trust enforcement works fully.
-        
+        Extracts ``_meta`` from the ``InitializeResult`` and calls
+        :func:`~capiscio_mcp.server.verify_server` to enforce
+        ``min_trust_level`` and ``fail_on_unverified`` constraints.
+
         Raises:
-            NotImplementedError: If HTTP transport is requested (not yet supported)
+            :class:`~capiscio_mcp.errors.ServerVerifyError`: If server verification fails.
+            :exc:`NotImplementedError`: If HTTP transport is requested (not yet supported).
         """
         if self.command:
-            # Stdio transport - spawn server process
+            # Stdio transport — spawn the server subprocess
             server_params = StdioServerParameters(
                 command=self.command,
                 args=self.args,
@@ -627,14 +846,15 @@ class CapiscioMCPClient:
                 self._session = McpClientSession(read_stream, write_stream)
                 try:
                     await self._session.__aenter__()
-                    # Initialize the session
-                    await self._session.initialize()
+                    # Initialize the session and capture the result
+                    result = await self._session.initialize()
+                    # Extract _meta — InitializeResult.meta is the _meta dict
+                    response_meta: Optional[Dict[str, Any]] = getattr(result, "meta", None)
+                    await self._verify_server_from_meta(response_meta)
                 except Exception:
-                    # Clean up session on failure
                     self._session = None
                     raise
             except Exception:
-                # Clean up context manager on failure
                 if self._context_manager:
                     try:
                         await self._context_manager.__aexit__(None, None, None)
@@ -643,99 +863,102 @@ class CapiscioMCPClient:
                     self._context_manager = None
                 raise
         else:
-            # HTTP transport would go here
-            logger.warning("HTTP transport not yet implemented, use stdio with command/args")
+            logger.warning("HTTP transport not yet implemented; use stdio with command/args")
             raise NotImplementedError("HTTP transport not yet implemented")
-        
-        # Note: Server identity verification is not yet functional.
-        # MCP SDK currently doesn't expose _meta from initialize response,
-        # so we cannot extract server_did and server_badge for verification.
-        # The min_trust_level and fail_on_unverified parameters are stored
-        # for future use when MCP SDK adds _meta passthrough support.
-        
-        logger.info(f"Connected to MCP server: {self.command or self.server_url}")
-    
+
+        logger.info("Connected to MCP server: %s", self.command or self.server_url)
+
     async def close(self) -> None:
-        """Close connection to MCP server."""
+        """Close the connection to the MCP server."""
         if self._session:
             await self._session.__aexit__(None, None, None)
             self._session = None
         if self._context_manager:
             await self._context_manager.__aexit__(None, None, None)
             self._context_manager = None
-    
+
+    # ------------------------------------------------------------------
+    # Properties
+    # ------------------------------------------------------------------
+
     @property
     def server_state(self) -> Optional[ServerState]:
         """Server verification state after connection."""
         return self._verify_result.state if self._verify_result else None
-    
+
     @property
     def server_trust_level(self) -> Optional[int]:
         """Server trust level if verified."""
         return self._verify_result.trust_level if self._verify_result else None
-    
+
     @property
     def server_did(self) -> Optional[str]:
         """Server DID if disclosed."""
         return self._verify_result.server_did if self._verify_result else None
-    
+
     @property
     def is_verified(self) -> bool:
-        """Check if server identity is cryptographically verified."""
+        """Whether the server identity is cryptographically verified."""
         return (
             self._verify_result is not None
             and self._verify_result.state == ServerState.VERIFIED_PRINCIPAL
         )
-    
+
+    # ------------------------------------------------------------------
+    # Tool calls
+    # ------------------------------------------------------------------
+
     async def call_tool(
         self,
         name: str,
         arguments: Optional[Dict[str, Any]] = None,
     ) -> Any:
-        """
-        Call a tool on the connected server.
-        
-        Automatically includes client credentials in the request.
-        
+        """Call a tool on the connected server, forwarding client credentials.
+
+        For stdio transport the caller's badge (and/or API key) is forwarded in
+        the JSON-RPC ``_meta`` of the ``tools/call`` request under the keys
+        ``capiscio_caller_badge`` / ``capiscio_caller_api_key``.  The server-side
+        :func:`_install_credential_extraction` wrapper picks these up and sets
+        the ``_current_credential`` contextvar before the guarded tool runs.
+
         Args:
-            name: Tool name
-            arguments: Tool arguments
-        
+            name: Tool name.
+            arguments: Tool arguments dict.
+
         Returns:
-            Tool result from the server
-            
+            Tool result from the server.
+
         Raises:
-            RuntimeError: If not connected
+            :exc:`RuntimeError`: If not connected.
         """
         if self._session is None:
             raise RuntimeError("Client not connected. Use 'async with' context.")
-        
-        # Set credential context for the call
-        token = set_credential(self._credential)
-        try:
-            # Call tool via MCP client session
-            result = await self._session.call_tool(name, arguments or {})
-            return result
-        finally:
-            # Reset credential context to avoid leakage between calls/tasks
-            from capiscio_mcp.guard import _current_credential
-            _current_credential.reset(token)
-    
+
+        # Build _meta carrying caller credentials for stdio transport.
+        meta: Optional[Dict[str, Any]] = None
+        if self._credential.badge_jws or self._credential.api_key:
+            meta = {}
+            if self._credential.badge_jws:
+                meta["capiscio_caller_badge"] = self._credential.badge_jws
+            if self._credential.api_key:
+                meta["capiscio_caller_api_key"] = self._credential.api_key
+
+        return await self._session.call_tool(name, arguments or {}, meta=meta)
+
     async def list_tools(self) -> List[Dict[str, Any]]:
-        """
-        List available tools on the server.
-        
+        """List tools available on the connected server.
+
         Returns:
-            List of tool definitions
+            List of ``{"name": ..., "description": ...}`` dicts.
+
+        Raises:
+            :exc:`RuntimeError`: If not connected.
         """
         if self._session is None:
             raise RuntimeError("Client not connected. Use 'async with' context.")
-        
+
         result = await self._session.list_tools()
         return [
-            {
-                "name": tool.name,
-                "description": tool.description,
-            }
+            {"name": tool.name, "description": tool.description}
             for tool in result.tools
         ]
