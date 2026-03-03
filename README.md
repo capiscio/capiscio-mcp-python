@@ -209,7 +209,7 @@ identity = await MCPServerIdentity.connect(
     api_key="sk_live_...",
 )
 
-print(identity.did)    # did:key:z6Mk...
+print(identity.did)    # did:web:registry.capisc.io:servers:550e8400-...
 print(identity.badge)  # Current badge JWS (auto-issued)
 ```
 

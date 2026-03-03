@@ -9,9 +9,11 @@ This guide covers deploying MCP servers with CapiscIO identity to production env
 When you call `MCPServerIdentity.connect()`, the SDK:
 
 1. Generates an Ed25519 keypair
-2. Derives a `did:key` DID from the public key
-3. Registers the DID with the CapiscIO registry
+2. Registers the public key with the CapiscIO registry
+3. Receives a `did:web` DID from the registry (e.g. `did:web:registry.capisc.io:servers:...`)
 4. Stores keys under `~/.capiscio/servers/{server_id}/`
+
+> **Note:** A `did:key` is only used in local dev mode when no registry is involved. In production with an API key, the registry assigns a `did:web` identity.
 
 In persistent environments (VMs, bare metal) this works automatically — the keys survive restarts. In **ephemeral environments** (containers, serverless, CI runners) the filesystem is recreated on every deploy, which would silently generate a new identity each time.
 
