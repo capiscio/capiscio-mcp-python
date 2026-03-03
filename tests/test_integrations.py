@@ -9,9 +9,9 @@ from capiscio_mcp.integrations.mcp import (
     CapiscioMCPClient,
     MCP_AVAILABLE,
     MCP_CLIENT_AVAILABLE,
+    _install_credential_extraction,
 )
 from capiscio_mcp.types import ServerState
-from capiscio_mcp.errors import GuardError, ServerVerifyError
 
 # Skip tests that require MCP package if not installed
 requires_mcp = pytest.mark.skipif(not MCP_AVAILABLE, reason="MCP package not installed")
@@ -238,6 +238,7 @@ class TestCapiscioMCPClient:
                     client = CapiscioMCPClient(
                         command="python",
                         args=["server.py"],
+                        fail_on_unverified=False,
                     )
                     
                     async with client:
@@ -308,3 +309,303 @@ class TestCapiscioMCPClient:
                 await client.list_tools()
             
             assert "not connected" in str(exc_info.value).lower()
+
+
+@requires_mcp
+class TestInstallCredentialExtraction:
+    """Tests for _install_credential_extraction — stdio badge-in-_meta mechanism."""
+
+    def _make_fastmcp_with_handler(self):
+        """Return a minimal FastMCP-like mock with a CallToolRequest handler."""
+        from mcp import types as _mcp_types
+
+        original_handler_called_with = []
+
+        async def original_handler(req):
+            original_handler_called_with.append(req)
+            return "original_result"
+
+        mock_server = MagicMock()
+        mock_server.request_handlers = {
+            _mcp_types.CallToolRequest: original_handler,
+        }
+
+        mock_fastmcp = MagicMock()
+        mock_fastmcp._mcp_server = mock_server
+        return mock_fastmcp, mock_server, original_handler_called_with
+
+    def test_installs_wrapper_over_call_tool_handler(self):
+        """_install_credential_extraction should replace the CallToolRequest handler."""
+        from mcp import types as _mcp_types
+
+        mock_fastmcp, mock_server, _ = self._make_fastmcp_with_handler()
+        original_handler = mock_server.request_handlers[_mcp_types.CallToolRequest]
+
+        _install_credential_extraction(mock_fastmcp)
+
+        new_handler = mock_server.request_handlers[_mcp_types.CallToolRequest]
+        assert new_handler is not original_handler
+
+    def test_no_mcp_server_attribute_is_safe(self):
+        """Should silently return if fastmcp has no _mcp_server attribute."""
+        mock_fastmcp = MagicMock(spec=[])  # no _mcp_server
+        # Should not raise
+        _install_credential_extraction(mock_fastmcp)
+
+    def test_no_handler_registered_is_safe(self):
+        """Should silently return if CallToolRequest handler is not registered."""
+        from mcp import types as _mcp_types
+
+        mock_server = MagicMock()
+        mock_server.request_handlers = {}  # no CallToolRequest handler
+        mock_fastmcp = MagicMock()
+        mock_fastmcp._mcp_server = mock_server
+
+        _install_credential_extraction(mock_fastmcp)
+        # request_handlers unchanged
+        assert _mcp_types.CallToolRequest not in mock_server.request_handlers
+
+    @pytest.mark.asyncio
+    async def test_badge_extracted_from_meta_and_sets_credential(self):
+        """Wrapper should extract capiscio_caller_badge from _meta and set contextvar."""
+        from mcp import types as _mcp_types
+        from capiscio_mcp.guard import _current_credential
+
+        captured_cred = []
+
+        async def original_handler(req):
+            # Capture whatever credential is set when the original handler runs
+            captured_cred.append(_current_credential.get())
+            return "ok"
+
+        mock_server = MagicMock()
+        mock_server.request_handlers = {_mcp_types.CallToolRequest: original_handler}
+        mock_fastmcp = MagicMock()
+        mock_fastmcp._mcp_server = mock_server
+
+        _install_credential_extraction(mock_fastmcp)
+        wrapper = mock_server.request_handlers[_mcp_types.CallToolRequest]
+
+        # Build a CallToolRequest with badge in _meta
+        meta = _mcp_types.RequestParams.Meta(capiscio_caller_badge="badge_jws_value")
+        params = _mcp_types.CallToolRequestParams(name="test_tool", arguments={}, _meta=meta)
+        req = _mcp_types.CallToolRequest(params=params)
+
+        await wrapper(req)
+
+        assert len(captured_cred) == 1
+        cred = captured_cred[0]
+        assert cred is not None
+        assert cred.badge_jws == "badge_jws_value"
+        assert cred.api_key is None
+
+    @pytest.mark.asyncio
+    async def test_api_key_extracted_from_meta(self):
+        """Wrapper should extract capiscio_caller_api_key from _meta."""
+        from mcp import types as _mcp_types
+        from capiscio_mcp.guard import _current_credential
+
+        captured_cred = []
+
+        async def original_handler(req):
+            captured_cred.append(_current_credential.get())
+            return "ok"
+
+        mock_server = MagicMock()
+        mock_server.request_handlers = {_mcp_types.CallToolRequest: original_handler}
+        mock_fastmcp = MagicMock()
+        mock_fastmcp._mcp_server = mock_server
+
+        _install_credential_extraction(mock_fastmcp)
+        wrapper = mock_server.request_handlers[_mcp_types.CallToolRequest]
+
+        meta = _mcp_types.RequestParams.Meta(capiscio_caller_api_key="sk-test-key")
+        params = _mcp_types.CallToolRequestParams(name="test_tool", arguments={}, _meta=meta)
+        req = _mcp_types.CallToolRequest(params=params)
+
+        await wrapper(req)
+
+        assert captured_cred[0].api_key == "sk-test-key"
+        assert captured_cred[0].badge_jws is None
+
+    @pytest.mark.asyncio
+    async def test_no_meta_passes_through_without_credential(self):
+        """Wrapper should call original handler unchanged when _meta has no credentials."""
+        from mcp import types as _mcp_types
+        from capiscio_mcp.guard import _current_credential
+
+        captured_cred = []
+
+        async def original_handler(req):
+            captured_cred.append(_current_credential.get())
+            return "ok"
+
+        mock_server = MagicMock()
+        mock_server.request_handlers = {_mcp_types.CallToolRequest: original_handler}
+        mock_fastmcp = MagicMock()
+        mock_fastmcp._mcp_server = mock_server
+
+        _install_credential_extraction(mock_fastmcp)
+        wrapper = mock_server.request_handlers[_mcp_types.CallToolRequest]
+
+        # No _meta on the request
+        params = _mcp_types.CallToolRequestParams(name="test_tool", arguments={})
+        req = _mcp_types.CallToolRequest(params=params)
+
+        await wrapper(req)
+
+        # Original handler should have been called; no credential set
+        assert len(captured_cred) == 1
+        # Default contextvar should be None (no credential)
+        assert captured_cred[0] is None
+
+    @pytest.mark.asyncio
+    async def test_credential_contextvar_is_reset_after_call(self):
+        """Credential contextvar must be reset to its prior value after the handler returns."""
+        from mcp import types as _mcp_types
+        from capiscio_mcp.guard import _current_credential, set_credential
+        from capiscio_mcp.types import CallerCredential
+
+        async def original_handler(req):
+            return "ok"
+
+        mock_server = MagicMock()
+        mock_server.request_handlers = {_mcp_types.CallToolRequest: original_handler}
+        mock_fastmcp = MagicMock()
+        mock_fastmcp._mcp_server = mock_server
+
+        _install_credential_extraction(mock_fastmcp)
+        wrapper = mock_server.request_handlers[_mcp_types.CallToolRequest]
+
+        # Set a pre-existing credential
+        prior_cred = CallerCredential(badge_jws="prior_badge")
+        token = set_credential(prior_cred)
+        try:
+            meta = _mcp_types.RequestParams.Meta(capiscio_caller_badge="call_badge")
+            params = _mcp_types.CallToolRequestParams(name="test", arguments={}, _meta=meta)
+            req = _mcp_types.CallToolRequest(params=params)
+            await wrapper(req)
+
+            # Credential should be restored to prior value
+            assert _current_credential.get() is prior_cred
+        finally:
+            _current_credential.reset(token)
+
+    def test_server_init_installs_credential_extraction(self):
+        """CapiscioMCPServer.__init__ should call _install_credential_extraction."""
+        with patch("capiscio_mcp.integrations.mcp.MCP_AVAILABLE", True):
+            with patch("capiscio_mcp.integrations.mcp.FastMCP"):
+                with patch(
+                    "capiscio_mcp.integrations.mcp._install_credential_extraction"
+                ) as mock_install:
+                    CapiscioMCPServer(
+                        name="test",
+                        did="did:web:example.com",
+                    )
+                    mock_install.assert_called_once()
+
+
+@requires_mcp_client
+class TestClientCallToolMetaPropagation:
+    """Tests for CapiscioMCPClient.call_tool forwarding credentials via _meta."""
+
+    @pytest.mark.asyncio
+    async def test_call_tool_passes_badge_in_meta(self):
+        """call_tool should pass badge in session.call_tool meta kwarg."""
+        with patch("capiscio_mcp.integrations.mcp.MCP_CLIENT_AVAILABLE", True):
+            client = CapiscioMCPClient(
+                command="python",
+                args=["server.py"],
+                badge="eyJhbGciOiJFZERTQSJ9.test.sig",
+            )
+
+            mock_session = AsyncMock()
+            mock_session.call_tool = AsyncMock(return_value="tool_result")
+            client._session = mock_session
+
+            result = await client.call_tool("my_tool", {"arg": "val"})
+
+            mock_session.call_tool.assert_called_once_with(
+                "my_tool",
+                {"arg": "val"},
+                meta={"capiscio_caller_badge": "eyJhbGciOiJFZERTQSJ9.test.sig"},
+            )
+            assert result == "tool_result"
+
+    @pytest.mark.asyncio
+    async def test_call_tool_passes_api_key_in_meta(self):
+        """call_tool should pass api_key in session.call_tool meta kwarg."""
+        with patch("capiscio_mcp.integrations.mcp.MCP_CLIENT_AVAILABLE", True):
+            client = CapiscioMCPClient(
+                command="python",
+                args=["server.py"],
+                api_key="sk-live-test",
+            )
+
+            mock_session = AsyncMock()
+            mock_session.call_tool = AsyncMock(return_value="result")
+            client._session = mock_session
+
+            await client.call_tool("tool", {})
+
+            _, _, kwargs = mock_session.call_tool.mock_calls[0]
+            assert kwargs["meta"] == {"capiscio_caller_api_key": "sk-live-test"}
+
+    @pytest.mark.asyncio
+    async def test_call_tool_passes_both_badge_and_api_key_in_meta(self):
+        """call_tool should pass both badge and api_key when both are set."""
+        with patch("capiscio_mcp.integrations.mcp.MCP_CLIENT_AVAILABLE", True):
+            client = CapiscioMCPClient(
+                command="python",
+                args=["server.py"],
+                badge="badge_jws",
+                api_key="sk-test",
+            )
+
+            mock_session = AsyncMock()
+            mock_session.call_tool = AsyncMock(return_value="result")
+            client._session = mock_session
+
+            await client.call_tool("tool", {})
+
+            _, _, kwargs = mock_session.call_tool.mock_calls[0]
+            assert kwargs["meta"] == {
+                "capiscio_caller_badge": "badge_jws",
+                "capiscio_caller_api_key": "sk-test",
+            }
+
+    @pytest.mark.asyncio
+    async def test_call_tool_passes_none_meta_when_no_credentials(self):
+        """call_tool should pass meta=None when no credentials are set."""
+        with patch("capiscio_mcp.integrations.mcp.MCP_CLIENT_AVAILABLE", True):
+            client = CapiscioMCPClient(
+                command="python",
+                args=["server.py"],
+                # No badge or api_key
+            )
+
+            mock_session = AsyncMock()
+            mock_session.call_tool = AsyncMock(return_value="result")
+            client._session = mock_session
+
+            await client.call_tool("tool", {"x": 1})
+
+            mock_session.call_tool.assert_called_once_with("tool", {"x": 1}, meta=None)
+
+    @pytest.mark.asyncio
+    async def test_call_tool_empty_arguments_uses_empty_dict(self):
+        """call_tool should default arguments to {} when None passed."""
+        with patch("capiscio_mcp.integrations.mcp.MCP_CLIENT_AVAILABLE", True):
+            client = CapiscioMCPClient(
+                command="python",
+                args=["server.py"],
+            )
+
+            mock_session = AsyncMock()
+            mock_session.call_tool = AsyncMock(return_value="result")
+            client._session = mock_session
+
+            await client.call_tool("tool")
+
+            call_args = mock_session.call_tool.call_args
+            assert call_args.args[1] == {}

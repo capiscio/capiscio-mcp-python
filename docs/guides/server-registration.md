@@ -191,9 +191,19 @@ except RegistrationError as e:
 
 | Variable | Description |
 |----------|-------------|
+| `CAPISCIO_SERVER_ID` | Server UUID from dashboard |
+| `CAPISCIO_API_KEY` | Registry API key |
+| `CAPISCIO_SERVER_URL` | Registry URL (default: production) |
+| `CAPISCIO_SERVER_DOMAIN` | Domain for badge issuance |
+| `CAPISCIO_SERVER_PRIVATE_KEY_PEM` | PEM-encoded Ed25519 private key (ephemeral environments) |
 | `CAPISCIO_CORE_ADDR` | External core address (default: embedded) |
 | `CAPISCIO_SERVER_DID` | Pre-configured server DID |
 | `CAPISCIO_SERVER_PRIVATE_KEY` | Path to private key PEM |
+
+!!! tip "Deploying to containers or serverless?"
+    See the [Deployment Guide](deployment.md) for Docker, Lambda, Cloud Run, and
+    Kubernetes examples using `CAPISCIO_SERVER_PRIVATE_KEY_PEM` for ephemeral
+    identity persistence.
 
 ## Security Best Practices
 
@@ -223,6 +233,7 @@ except RegistrationError as e:
 
 ## Next Steps
 
+- [Deployment Guide](deployment.md) - Docker, Lambda, Cloud Run, Kubernetes
 - [Protect MCP Tools](server-side.md) - Add trust-level requirements
 - [Client-Side Verification](client-side.md) - Verify servers before connecting
 - [Evidence Logging](evidence.md) - Audit trail for all tool calls

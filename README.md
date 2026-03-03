@@ -197,6 +197,68 @@ async with CapiscioMCPClient(
     print(result)
 ```
 
+## MCPServerIdentity.connect() — "Let's Encrypt" Style Setup
+
+Register your MCP server and get a badge with a single call:
+
+```python
+from capiscio_mcp import MCPServerIdentity
+
+identity = await MCPServerIdentity.connect(
+    server_id="550e8400-...",   # From the dashboard
+    api_key="sk_live_...",
+)
+
+print(identity.did)    # did:web:registry.capisc.io:servers:550e8400-...
+print(identity.badge)  # Current badge JWS (auto-issued)
+```
+
+### Using Environment Variables
+
+```python
+identity = await MCPServerIdentity.from_env()
+```
+
+| Variable | Required | Description |
+|----------|----------|-------------|
+| `CAPISCIO_SERVER_ID` | Yes | Server UUID from dashboard |
+| `CAPISCIO_API_KEY` | Yes | Registry API key |
+| `CAPISCIO_SERVER_URL` | No | Registry URL (default: production) |
+| `CAPISCIO_SERVER_DOMAIN` | No | Domain for badge issuance |
+| `CAPISCIO_SERVER_PRIVATE_KEY_PEM` | No | PEM-encoded Ed25519 private key for ephemeral environments |
+
+### Deploying to Containers / Serverless
+
+In ephemeral environments (Docker, Lambda, Cloud Run) the local `~/.capiscio/` directory
+doesn't survive restarts. On first run the SDK generates a keypair and logs a capture hint:
+
+```
+╔══════════════════════════════════════════════════════════╗
+║  New server identity generated — save key for persistence  ║
+╚══════════════════════════════════════════════════════════╝
+
+  Add to your secrets manager / .env:
+
+    CAPISCIO_SERVER_PRIVATE_KEY_PEM='-----BEGIN PRIVATE KEY-----\nMC4C...\n-----END PRIVATE KEY-----\n'
+```
+
+Copy that value into your secrets manager and set it as an environment variable.
+On subsequent starts the SDK will recover the same DID without generating a new identity.
+
+**Key resolution priority:** env var → local file → generate new.
+
+```yaml
+# docker-compose.yml
+services:
+  mcp-server:
+    environment:
+      CAPISCIO_SERVER_ID: "550e8400-..."
+      CAPISCIO_API_KEY: "sk_live_..."
+      CAPISCIO_SERVER_PRIVATE_KEY_PEM: "${MCP_SERVER_KEY}"  # from secrets
+```
+
+See the [Deployment Guide](https://docs.capisc.io/mcp-guard/guides/deployment/) for full examples.
+
 ## Core Connection Modes
 
 MCP Guard connects to capiscio-core for cryptographic operations:
@@ -299,6 +361,11 @@ config = VerifyConfig(
 
 | Variable | Description | Default |
 |----------|-------------|---------|
+| `CAPISCIO_SERVER_ID` | Server UUID (for `MCPServerIdentity`) | — |
+| `CAPISCIO_API_KEY` | Registry API key (for `MCPServerIdentity`) | — |
+| `CAPISCIO_SERVER_URL` | Registry server URL | `https://registry.capisc.io` |
+| `CAPISCIO_SERVER_DOMAIN` | Domain for badge issuance | (derived from server URL) |
+| `CAPISCIO_SERVER_PRIVATE_KEY_PEM` | PEM-encoded Ed25519 private key (ephemeral envs) | — |
 | `CAPISCIO_CORE_ADDR` | External core address | (embedded mode) |
 | `CAPISCIO_SERVER_ORIGIN` | Server origin for guard | (auto-detect) |
 | `CAPISCIO_LOG_LEVEL` | Logging verbosity | `info` |

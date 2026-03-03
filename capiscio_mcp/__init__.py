@@ -10,13 +10,30 @@ This package provides:
 - Server identity registration for MCP servers
 - PoP (Proof of Possession) handshake for server key verification
 - Evidence logging for audit and forensics
+- One-line server identity setup via MCPServerIdentity.connect()
 
 Installation:
     pip install capiscio-mcp          # Standalone
     pip install capiscio-mcp[mcp]     # With MCP SDK integration
     pip install capiscio-mcp[crypto]  # With PoP signing/verification
 
-Quickstart (Server-side):
+Quickstart ("Let's Encrypt" style — recommended):
+    from capiscio_mcp import MCPServerIdentity
+    from capiscio_mcp.integrations.mcp import CapiscioMCPServer
+
+    identity = await MCPServerIdentity.connect(
+        server_id=os.environ["CAPISCIO_SERVER_ID"],
+        api_key=os.environ["CAPISCIO_API_KEY"],
+    )
+    server = CapiscioMCPServer(identity=identity)
+
+    @server.tool(min_trust_level=2)
+    async def read_file(path: str) -> str:
+        ...
+
+    server.run()
+
+Quickstart (@guard decorator):
     from capiscio_mcp import guard
 
     @guard(min_trust_level=2)
@@ -33,7 +50,7 @@ Quickstart (Client-side):
     if result.state == ServerState.VERIFIED_PRINCIPAL:
         print(f"Trusted at level {result.trust_level}")
 
-Quickstart (Server Registration):
+Quickstart (Server Registration, manual):
     from capiscio_mcp import setup_server_identity
 
     result = await setup_server_identity(
@@ -95,6 +112,8 @@ from capiscio_mcp.registration import (
     RegistrationError,
     KeyGenerationError,
 )
+from capiscio_mcp.keeper import ServerBadgeKeeper
+from capiscio_mcp.connect import MCPServerIdentity
 from capiscio_mcp._core.version import (
     MCP_VERSION,
     CORE_MIN_VERSION,
@@ -154,4 +173,7 @@ __all__ = [
     "setup_server_identity_sync",
     "RegistrationError",
     "KeyGenerationError",
+    # One-liner identity setup (MCPServerIdentity.connect())
+    "MCPServerIdentity",
+    "ServerBadgeKeeper",
 ]
