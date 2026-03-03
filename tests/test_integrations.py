@@ -12,7 +12,6 @@ from capiscio_mcp.integrations.mcp import (
     _install_credential_extraction,
 )
 from capiscio_mcp.types import ServerState
-from capiscio_mcp.errors import GuardError, ServerVerifyError
 
 # Skip tests that require MCP package if not installed
 requires_mcp = pytest.mark.skipif(not MCP_AVAILABLE, reason="MCP package not installed")
@@ -239,6 +238,7 @@ class TestCapiscioMCPClient:
                     client = CapiscioMCPClient(
                         command="python",
                         args=["server.py"],
+                        fail_on_unverified=False,
                     )
                     
                     async with client:

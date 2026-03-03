@@ -26,10 +26,8 @@ Usage::
 from __future__ import annotations
 
 import asyncio
-import base64
 import logging
 import os
-import sys
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any, Callable, Optional
@@ -48,7 +46,6 @@ from cryptography.hazmat.primitives.serialization import (
 
 from capiscio_mcp.keeper import ServerBadgeKeeper
 from capiscio_mcp.registration import (
-    KeyGenerationError,
     RegistrationError,
     generate_server_keypair,
     register_server_identity,
@@ -93,12 +90,16 @@ def _load_private_key_pem(pem_text: str) -> tuple[Ed25519PrivateKey, str, str, s
 
 
 def _log_key_capture_hint(server_id: str, private_key_pem: str) -> None:
-    """Log a one-time hint telling the user how to persist key material."""
-    # Strip PEM headers to get the single-line base64 DER payload
-    lines = [l for l in private_key_pem.strip().splitlines() if not l.startswith("-----")]
-    der_b64 = "".join(lines)
+    """Write a one-time hint to stderr telling the user how to persist key material.
 
-    logger.warning(
+    Uses ``print(..., file=sys.stderr)`` instead of the logger so the private
+    key never enters log aggregation pipelines.  The hint is only emitted on
+    first-run key generation.
+    """
+    import sys as _sys  # local import — only needed for this hint
+
+    escaped_pem = private_key_pem.replace("\n", "\\n")
+    hint = (
         "\n"
         "  ╔══════════════════════════════════════════════════════════════╗\n"
         "  ║  New server identity generated — save key for persistence  ║\n"
@@ -110,12 +111,11 @@ def _log_key_capture_hint(server_id: str, private_key_pem: str) -> None:
         "\n"
         "  Add to your secrets manager / .env:\n"
         "\n"
-        "    CAPISCIO_SERVER_PRIVATE_KEY_PEM=\""  # noqa: E501
-        + private_key_pem.replace("\n", "\\n")
-        + "\"\n"
+        f'    CAPISCIO_SERVER_PRIVATE_KEY_PEM="{escaped_pem}"\n'
         "\n"
         "  The DID will be re-derived automatically on startup.\n"
     )
+    print(hint, file=_sys.stderr, flush=True)
 
 
 # ---------------------------------------------------------------------------
@@ -150,7 +150,11 @@ def _issue_badge_sync(
     try:
         resp = requests.post(url, headers=headers, json={"domain": effective_domain}, timeout=30)
         if resp.status_code in (200, 201):
-            data = resp.json()
+            try:
+                data = resp.json()
+            except ValueError as exc:
+                logger.warning("Badge issuance response was not valid JSON: %s", exc)
+                return None
             # Try multiple common response shapes
             nested = data.get("data") or {}
             badge = (
@@ -385,7 +389,17 @@ class MCPServerIdentity:
             )
             logger.info("Server identity registered: %s", did)
         except RegistrationError as exc:
-            logger.debug("Registration returned: %s — continuing", exc)
+            status_code = getattr(exc, "status_code", None)
+            if status_code in (None, 409):
+                # 409 = identity already registered (idempotent), None = network error
+                logger.debug("Registration returned: %s — continuing", exc)
+            else:
+                logger.warning(
+                    "Server identity registration failed (status %s): %s",
+                    status_code,
+                    exc,
+                )
+                raise
 
         # ------------------------------------------------------------------
         # Step 3.5: First-run capture hint & rotation warning

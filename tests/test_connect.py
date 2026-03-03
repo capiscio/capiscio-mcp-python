@@ -1,12 +1,8 @@
 """Tests for capiscio_mcp.connect.MCPServerIdentity."""
 
-import asyncio
-import base64
-import json
 import os
-import tempfile
 from pathlib import Path
-from unittest.mock import AsyncMock, MagicMock, patch, mock_open
+from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 

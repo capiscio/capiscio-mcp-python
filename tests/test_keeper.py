@@ -3,7 +3,6 @@
 import base64
 import json
 import time
-import threading
 from unittest.mock import MagicMock, patch
 
 import pytest
@@ -11,8 +10,6 @@ import pytest
 from capiscio_mcp.keeper import (
     ServerBadgeKeeper,
     _decode_jwt_exp,
-    DEFAULT_CHECK_INTERVAL,
-    DEFAULT_RENEWAL_THRESHOLD,
 )
 
 

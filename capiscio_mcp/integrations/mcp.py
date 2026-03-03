@@ -92,7 +92,7 @@ except ImportError:
     Ed25519PublicKey = None  # type: ignore
     CRYPTO_AVAILABLE = False
 
-from capiscio_mcp.types import ServerState, CallerCredential
+from capiscio_mcp.types import ServerState, ServerErrorCode, CallerCredential
 from capiscio_mcp.server import (
     verify_server,
     VerifyConfig,
@@ -766,10 +766,14 @@ class CapiscioMCPClient:
             :class:`~capiscio_mcp.errors.ServerVerifyError`: If constraints are violated.
         """
         if not meta or not isinstance(meta, dict):
-            if self.fail_on_unverified and self.min_trust_level > 0:
+            if self.fail_on_unverified:
                 raise ServerVerifyError(
-                    f"Server did not disclose identity (_meta missing) but "
-                    f"min_trust_level={self.min_trust_level} is required"
+                    error_code=ServerErrorCode.DID_INVALID,
+                    detail=(
+                        "Server did not disclose identity (_meta missing)"
+                        + (f" but min_trust_level={self.min_trust_level} is required"
+                           if self.min_trust_level > 0 else "")
+                    ),
                 )
             logger.debug("Server did not disclose identity (_meta absent or non-dict)")
             return
@@ -778,9 +782,10 @@ class CapiscioMCPClient:
         server_badge = meta.get("capiscio_server_badge")
 
         if not server_did:
-            if self.fail_on_unverified and self.min_trust_level > 0:
+            if self.fail_on_unverified:
                 raise ServerVerifyError(
-                    "Server _meta does not contain capiscio_server_did"
+                    error_code=ServerErrorCode.DID_INVALID,
+                    detail="Server _meta does not contain capiscio_server_did",
                 )
             logger.debug("Server _meta has no capiscio_server_did")
             return
@@ -803,13 +808,21 @@ class CapiscioMCPClient:
 
         if self.fail_on_unverified and state == ServerState.UNVERIFIED_ORIGIN:
             raise ServerVerifyError(
-                f"Server identity could not be verified (state={state.value})"
+                error_code=ServerErrorCode.DID_INVALID,
+                detail=f"Server identity could not be verified (state={state.value})",
+                state=state,
+                server_did=server_did,
             )
 
         if trust_level < self.min_trust_level:
             raise ServerVerifyError(
-                f"Server trust level {trust_level} is below required "
-                f"min_trust_level={self.min_trust_level}"
+                error_code=ServerErrorCode.TRUST_INSUFFICIENT,
+                detail=(
+                    f"Server trust level {trust_level} is below required "
+                    f"min_trust_level={self.min_trust_level}"
+                ),
+                state=state,
+                server_did=server_did,
             )
 
     # ------------------------------------------------------------------
@@ -869,6 +882,11 @@ class CapiscioMCPClient:
                     response_meta: Optional[Dict[str, Any]] = getattr(result, "meta", None)
                     await self._verify_server_from_meta(response_meta)
                 except Exception:
+                    if self._session:
+                        try:
+                            await self._session.__aexit__(None, None, None)
+                        except Exception:
+                            pass
                     self._session = None
                     raise
             except Exception:

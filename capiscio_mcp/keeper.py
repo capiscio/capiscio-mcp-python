@@ -141,16 +141,23 @@ class ServerBadgeKeeper:
         self._thread.start()
 
     def stop(self) -> None:
-        """Stop the background renewal thread (blocks until it exits)."""
+        """Request the background renewal thread to stop and wait up to 5s for it."""
         if not self._running:
             return
         logger.info("Stopping ServerBadgeKeeper for server %s...", self.server_id)
         self._stop_event.set()
         if self._thread:
             self._thread.join(timeout=5)
+            if self._thread.is_alive():
+                logger.warning(
+                    "ServerBadgeKeeper thread for server %s did not exit within "
+                    "5s; background renewal may still be running",
+                    self.server_id,
+                )
+            else:
+                logger.info("ServerBadgeKeeper stopped")
             self._thread = None
         self._running = False
-        logger.info("ServerBadgeKeeper stopped")
 
     def get_current_badge(self) -> Optional[str]:
         """Return the current (most recently renewed) badge JWS."""
@@ -217,7 +224,11 @@ class ServerBadgeKeeper:
         try:
             resp = requests.post(url, headers=headers, json={}, timeout=30)
             if resp.status_code in (200, 201):
-                data = resp.json()
+                try:
+                    data = resp.json()
+                except ValueError as exc:
+                    logger.warning("Badge renewal response was not valid JSON: %s", exc)
+                    return
                 # Try multiple common response shapes
                 new_badge = (
                     (data.get("data") or {}).get("badge")
