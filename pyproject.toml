@@ -31,7 +31,6 @@ dependencies = [
     "grpcio-tools>=1.60.0",
     "protobuf>=4.25.0",
     "requests>=2.31.0",
-    "platformdirs>=4.0.0",
     "cryptography>=42.0.0",
     "base58>=2.1.0",
 ]

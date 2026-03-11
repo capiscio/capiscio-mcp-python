@@ -16,8 +16,9 @@ from typing import Tuple
 MCP_VERSION = "0.1.0"
 
 # Compatible capiscio-core versions (internal constraint)
-# Note: MCP integration was added in 2.3.1
-CORE_MIN_VERSION = "2.3.0"
+# Note: MCP integration was added in 2.3.1, but 2.4.0 is required
+# for full compatibility with the current SDK.
+CORE_MIN_VERSION = "2.4.0"
 CORE_MAX_VERSION = "3.0.0"  # exclusive
 
 # Proto schema version for wire compatibility
