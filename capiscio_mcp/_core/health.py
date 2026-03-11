@@ -8,7 +8,7 @@ import asyncio
 import logging
 from typing import TYPE_CHECKING
 
-from capiscio_mcp._core.version import is_core_compatible, PROTO_VERSION
+from capiscio_mcp._core.version import is_core_compatible, PROTO_VERSION, CORE_MIN_VERSION, CORE_MAX_VERSION
 from capiscio_mcp.errors import CoreConnectionError, CoreVersionError
 
 if TYPE_CHECKING:
@@ -54,7 +54,7 @@ async def check_version_compatibility(
         if not is_core_compatible(response.core_version):
             raise CoreVersionError(
                 f"capiscio-core version {response.core_version} is not compatible. "
-                f"This SDK requires core version >= 2.5.0 and < 3.0.0"
+                f"This SDK requires core version >= {CORE_MIN_VERSION} and < {CORE_MAX_VERSION}"
             )
         
         # Check proto version
