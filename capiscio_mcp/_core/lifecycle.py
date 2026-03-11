@@ -18,7 +18,6 @@ import subprocess
 from pathlib import Path
 from typing import Optional, Tuple
 
-import sys
 import time
 
 import requests
@@ -123,12 +122,10 @@ def download_binary(version: Optional[str] = None) -> Path:
     os_name, arch_name = get_platform_info()
     url = get_download_url(version, os_name, arch_name)
     
-    sys.stderr.write(
+    logger.info(
         f"capiscio-core v{version} not found. "
-        f"Downloading for {os_name}/{arch_name}...\n"
+        f"Downloading for {os_name}/{arch_name}..."
     )
-    sys.stderr.flush()
-    logger.info(f"Downloading capiscio-core v{version} for {os_name}/{arch_name}...")
     
     # Ensure directory exists
     target_path.parent.mkdir(parents=True, exist_ok=True)
@@ -136,25 +133,43 @@ def download_binary(version: Optional[str] = None) -> Path:
     max_attempts = 3
     for attempt in range(1, max_attempts + 1):
         try:
-            response = requests.get(url, stream=True, timeout=60)
-            response.raise_for_status()
-            
-            # Write binary
-            with open(target_path, "wb") as f:
-                for chunk in response.iter_content(chunk_size=8192):
-                    f.write(chunk)
+            with requests.get(url, stream=True, timeout=60) as response:
+                response.raise_for_status()
+                
+                # Write binary
+                with open(target_path, "wb") as f:
+                    for chunk in response.iter_content(chunk_size=8192):
+                        f.write(chunk)
             
             # Make executable (Unix)
             if os_name != "windows":
                 st = os.stat(target_path)
                 os.chmod(target_path, st.st_mode | stat.S_IEXEC)
             
-            sys.stderr.write(f"Installed capiscio-core v{version} at {target_path}\n")
-            sys.stderr.flush()
-            logger.info(f"Successfully installed capiscio-core v{version}")
+            logger.info(f"Installed capiscio-core v{version} at {target_path}")
             return target_path
             
-        except Exception as e:
+        except requests.exceptions.HTTPError as e:
+            if target_path.exists():
+                target_path.unlink()
+            # Fail fast on client errors (4xx) — not transient
+            if e.response is not None and 400 <= e.response.status_code < 500:
+                raise CoreConnectionError(
+                    f"Failed to download binary from {url}: {e}"
+                ) from e
+            if attempt < max_attempts:
+                delay = 2 ** (attempt - 1)
+                logger.warning(
+                    f"Download attempt {attempt}/{max_attempts} failed: {e}. "
+                    f"Retrying in {delay}s..."
+                )
+                time.sleep(delay)
+            else:
+                raise CoreConnectionError(
+                    f"Failed to download binary from {url} "
+                    f"after {max_attempts} attempts: {e}"
+                ) from e
+        except (requests.exceptions.ConnectionError, requests.exceptions.Timeout, OSError) as e:
             if target_path.exists():
                 target_path.unlink()
             if attempt < max_attempts:

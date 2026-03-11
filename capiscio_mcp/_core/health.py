@@ -8,7 +8,12 @@ import asyncio
 import logging
 from typing import TYPE_CHECKING
 
-from capiscio_mcp._core.version import is_core_compatible, PROTO_VERSION, CORE_MIN_VERSION, CORE_MAX_VERSION
+from capiscio_mcp._core.version import (
+    is_core_compatible,
+    PROTO_VERSION,
+    CORE_MIN_VERSION,
+    CORE_MAX_VERSION,
+)
 from capiscio_mcp.errors import CoreConnectionError, CoreVersionError
 
 if TYPE_CHECKING:

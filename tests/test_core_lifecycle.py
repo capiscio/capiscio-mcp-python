@@ -181,7 +181,7 @@ class TestDownloadBinary:
     @patch("requests.get")
     @patch("capiscio_mcp._core.lifecycle.get_binary_path")
     def test_download_404_error(self, mock_path, mock_get):
-        """404 response should raise error."""
+        """404 response should raise error immediately (no retry)."""
         import requests
         
         with tempfile.TemporaryDirectory() as tmpdir:
@@ -190,7 +190,11 @@ class TestDownloadBinary:
             
             mock_response = MagicMock()
             mock_response.status_code = 404
-            mock_response.raise_for_status.side_effect = requests.exceptions.HTTPError("404")
+            http_err = requests.exceptions.HTTPError("404")
+            http_err.response = mock_response
+            mock_response.raise_for_status.side_effect = http_err
+            mock_response.__enter__ = MagicMock(return_value=mock_response)
+            mock_response.__exit__ = MagicMock(return_value=False)
             mock_get.return_value = mock_response
             
             from capiscio_mcp.errors import CoreConnectionError
