@@ -7,6 +7,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [2.5.0] - 2026-03-16
+
+### Added
+- **`MCPServerIdentity.connect()`**: Zero-config server identity setup with `ServerBadgeKeeper` (#7)
+- **Stdio Credential Passing**: Badge credentials passed in `_meta` for stdio transports (#7)
+
+### Fixed
+- Improve binary install experience with better error messages (#8)
+
 ## [2.4.0] - 2026-02-04
 
 ### Changed
