@@ -51,13 +51,12 @@ class TestObligation:
     """Tests for Obligation dataclass."""
 
     def test_basic(self):
-        o = Obligation(id="obl-1", type="rate_limit", params={"max_rps": 10})
-        assert o.id == "obl-1"
+        o = Obligation(type="rate_limit", params={"max_rps": 10})
         assert o.type == "rate_limit"
         assert o.params["max_rps"] == 10
 
     def test_empty_params(self):
-        o = Obligation(id="obl-2", type="audit_log")
+        o = Obligation(type="audit_log")
         assert o.params == {}
 
 
@@ -101,7 +100,7 @@ class TestExecuteObligations:
     @pytest.mark.asyncio
     async def test_handler_called(self):
         handler = AsyncMock()
-        obl = Obligation(id="o1", type="rate_limit", params={"max_rps": 5})
+        obl = Obligation(type="rate_limit", params={"max_rps": 5})
         r = PolicyResult(decision="ALLOW", obligations=[obl])
 
         await r.execute_obligations(handlers={"rate_limit": handler})
@@ -110,7 +109,7 @@ class TestExecuteObligations:
 
     @pytest.mark.asyncio
     async def test_unknown_type_skipped(self):
-        obl = Obligation(id="o1", type="unknown_type")
+        obl = Obligation(type="unknown_type")
         r = PolicyResult(decision="ALLOW", obligations=[obl])
 
         # Should not raise — just logs a warning
@@ -119,7 +118,7 @@ class TestExecuteObligations:
     @pytest.mark.asyncio
     async def test_handler_exception_logged(self):
         handler = AsyncMock(side_effect=RuntimeError("boom"))
-        obl = Obligation(id="o1", type="rate_limit")
+        obl = Obligation(type="rate_limit")
         r = PolicyResult(decision="ALLOW", obligations=[obl])
 
         # Should not raise — logs the exception
@@ -131,8 +130,8 @@ class TestExecuteObligations:
         audit_handler = AsyncMock()
 
         obligations = [
-            Obligation(id="o1", type="rate_limit", params={"max_rps": 10}),
-            Obligation(id="o2", type="audit_log", params={"detail": "high"}),
+            Obligation(type="rate_limit", params={"max_rps": 10}),
+            Obligation(type="audit_log", params={"detail": "high"}),
         ]
         r = PolicyResult(decision="ALLOW", obligations=obligations)
 
@@ -254,7 +253,6 @@ class TestPolicyClient:
     @pytest.mark.asyncio
     async def test_obligations_parsed(self, mock_core_client):
         obl = MagicMock()
-        obl.id = "obl-1"
         obl.type = "rate_limit"
         obl.params_json = json.dumps({"max_rps": 10})
 
@@ -276,7 +274,6 @@ class TestPolicyClient:
     @pytest.mark.asyncio
     async def test_obligation_bad_json(self, mock_core_client):
         obl = MagicMock()
-        obl.id = "obl-bad"
         obl.type = "audit_log"
         obl.params_json = "not-json"
 

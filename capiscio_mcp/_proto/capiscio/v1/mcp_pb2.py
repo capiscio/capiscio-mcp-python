@@ -230,7 +230,6 @@ class PolicyDecisionRequest:
 @dataclass
 class MCPObligation:
     """Obligation from policy decision."""
-    id: str = ""
     type: str = ""
     params_json: str = ""
 

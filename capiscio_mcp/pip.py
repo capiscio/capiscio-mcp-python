@@ -68,12 +68,10 @@ class Obligation:
     """A single obligation returned by the PDP.
 
     Attributes:
-        id: Unique obligation identifier.
         type: Obligation type (e.g., "rate_limit", "audit_log").
         params: Parsed parameters dictionary (from params_json).
     """
 
-    id: str
     type: str
     params: Dict[str, Any] = field(default_factory=dict)
 
@@ -153,9 +151,8 @@ class PolicyResult:
             handler = effective_handlers.get(obligation.type)
             if handler is None:
                 logger.warning(
-                    "No handler for obligation type %r (id=%s), skipping",
+                    "No handler for obligation type %r, skipping",
                     obligation.type,
-                    obligation.id,
                 )
                 continue
 
@@ -163,9 +160,8 @@ class PolicyResult:
                 await handler(obligation)
             except Exception:
                 logger.exception(
-                    "Obligation handler failed for %r (id=%s)",
+                    "Obligation handler failed for %r",
                     obligation.type,
-                    obligation.id,
                 )
 
 
@@ -251,13 +247,21 @@ class PolicyClient:
             params: Dict[str, Any] = {}
             if obl.params_json:
                 try:
-                    params = json.loads(obl.params_json)
+                    parsed = json.loads(obl.params_json)
+                    if isinstance(parsed, dict):
+                        params = parsed
+                    else:
+                        logger.warning(
+                            "Obligation params_json is not a dict for type %s",
+                            obl.type,
+                        )
                 except (json.JSONDecodeError, TypeError):
                     logger.warning(
-                        "Failed to parse obligation params_json for %s", obl.id
+                        "Failed to parse obligation params_json for type %s",
+                        obl.type,
                     )
             obligations.append(
-                Obligation(id=obl.id, type=obl.type, params=params)
+                Obligation(type=obl.type, params=params)
             )
 
         return PolicyResult(
