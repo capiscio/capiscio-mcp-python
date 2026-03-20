@@ -214,7 +214,7 @@ class PolicyConfig:
     enforcement_mode: str = ""
     pep_id: str = ""
     workspace: str = ""
-    breakglass_public_key_path: str = ""
+    breakglass_public_key: bytes = b""
 
 
 @dataclass

@@ -78,7 +78,7 @@ class TestPIPConfig:
             pdp_timeout_ms=1000,
             pep_id="pep-42",
             workspace="ws-1",
-            breakglass_public_key_path="/keys/bg.pub",
+            breakglass_public_key=b"test-key-bytes",
         )
         assert c.pdp_endpoint == "https://pdp.example.com/eval"
         assert c.enforcement_mode == "EM-GUARD"

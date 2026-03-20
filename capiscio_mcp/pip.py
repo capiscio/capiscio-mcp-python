@@ -52,7 +52,7 @@ class PIPConfig:
             Empty = EM-OBSERVE.
         pep_id: PEP identifier for audit logs.
         workspace: Workspace identifier for PDP requests.
-        breakglass_public_key_path: Path to Ed25519 public key for break-glass.
+        breakglass_public_key: Ed25519 public key bytes for break-glass verification.
     """
 
     pdp_endpoint: str = ""
@@ -60,7 +60,7 @@ class PIPConfig:
     enforcement_mode: str = ""
     pep_id: str = ""
     workspace: str = ""
-    breakglass_public_key_path: str = ""
+    breakglass_public_key: bytes = b""
 
 
 @dataclass
@@ -238,7 +238,7 @@ class PolicyClient:
                 enforcement_mode=self.config.enforcement_mode,
                 pep_id=self.config.pep_id,
                 workspace=self.config.workspace,
-                breakglass_public_key_path=self.config.breakglass_public_key_path,
+                breakglass_public_key=self.config.breakglass_public_key,
             ),
             breakglass_token=breakglass_token,
         )
