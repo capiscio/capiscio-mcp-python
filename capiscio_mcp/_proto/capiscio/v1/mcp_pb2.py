@@ -177,3 +177,75 @@ class HealthResponse:
     core_version: str = ""
     proto_version: str = ""
     version_compatible: bool = True
+
+
+# =============================================================================
+# RFC-005: Policy Decision Messages
+# =============================================================================
+
+@dataclass
+class PolicySubject:
+    """Subject attributes for policy evaluation."""
+    did: str = ""
+    badge_jti: str = ""
+    ial: str = ""
+    trust_level: str = ""
+    badge_exp: int = 0
+
+
+@dataclass
+class PolicyAction:
+    """Action attributes for policy evaluation."""
+    operation: str = ""
+    capability_class: str = ""
+
+
+@dataclass
+class PolicyResource:
+    """Resource attributes for policy evaluation."""
+    identifier: str = ""
+
+
+@dataclass
+class PolicyConfig:
+    """PEP-level configuration for the policy decision."""
+    pdp_endpoint: str = ""
+    pdp_timeout_ms: int = 0
+    enforcement_mode: str = ""
+    pep_id: str = ""
+    workspace: str = ""
+    breakglass_public_key: bytes = b""
+
+
+@dataclass
+class PolicyDecisionRequest:
+    """Request message for EvaluatePolicyDecision RPC."""
+    subject: Optional[PolicySubject] = None
+    action: Optional[PolicyAction] = None
+    resource: Optional[PolicyResource] = None
+    config: Optional[PolicyConfig] = None
+    breakglass_token: str = ""
+
+
+@dataclass
+class MCPObligation:
+    """Obligation from policy decision."""
+    type: str = ""
+    params_json: str = ""
+
+
+@dataclass
+class PolicyDecisionResponse:
+    """Response from centralized policy decision."""
+    decision: str = ""
+    decision_id: str = ""
+    reason: str = ""
+    ttl: int = 0
+    obligations: List["MCPObligation"] = field(default_factory=list)
+    enforcement_mode: str = ""
+    cache_hit: bool = False
+    breakglass_override: bool = False
+    breakglass_jti: str = ""
+    error_code: str = ""
+    pdp_latency_ms: int = 0
+    txn_id: str = ""

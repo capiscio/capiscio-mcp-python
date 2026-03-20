@@ -44,6 +44,18 @@ class MCPServiceStub:
         """
         raise NotImplementedError("Stub - replace with generated code")
     
+    async def EvaluatePolicyDecision(
+        self,
+        request: "mcp_pb2.PolicyDecisionRequest",
+    ) -> "mcp_pb2.PolicyDecisionResponse":
+        """
+        Evaluate policy decision (RFC-005).
+        
+        Centralized PDP decision logic. Returns policy outcome
+        including obligations — never raises gRPC errors for PDP issues.
+        """
+        raise NotImplementedError("Stub - replace with generated code")
+    
     async def VerifyServerIdentity(
         self,
         request: "mcp_pb2.VerifyServerIdentityRequest",
@@ -85,6 +97,14 @@ class MCPServiceServicer:
         context: "grpc.aio.ServicerContext",
     ) -> "mcp_pb2.EvaluateToolAccessResponse":
         """Evaluate tool access (RFC-006)."""
+        raise NotImplementedError("Method not implemented!")
+    
+    async def EvaluatePolicyDecision(
+        self,
+        request: "mcp_pb2.PolicyDecisionRequest",
+        context: "grpc.aio.ServicerContext",
+    ) -> "mcp_pb2.PolicyDecisionResponse":
+        """Evaluate policy decision (RFC-005)."""
         raise NotImplementedError("Method not implemented!")
     
     async def VerifyServerIdentity(
