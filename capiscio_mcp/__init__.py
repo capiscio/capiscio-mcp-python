@@ -69,6 +69,12 @@ from capiscio_mcp.types import (
     ServerErrorCode,
     TrustLevel,
 )
+
+# Eagerly register MCP proto descriptor before capiscio-sdk can register its
+# simpler version.  The MCP proto is a superset (has PolicyDecision* etc.), so
+# the SDK can safely fall back to it when it detects a duplicate.
+import capiscio_mcp._proto.gen.capiscio.v1.mcp_pb2 as _mcp_pb2  # noqa: F401, E402
+
 from capiscio_mcp.errors import (
     GuardError,
     ServerVerifyError,
