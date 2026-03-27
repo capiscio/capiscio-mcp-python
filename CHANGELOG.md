@@ -7,6 +7,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [2.6.0] - 2026-03-27
+
+### Added
+- **PolicyClient**: RFC-005 PDP integration via Option B for embedded policy evaluation (#10)
+
+### Fixed
+- **Proto Descriptor Collision**: Hardened `AddSerializedFile` error handling with eager registration to win descriptor pool race (#11)
+- **PyPI Wheel Packaging**: Force-include nested proto files in wheel and sdist builds (#11)
+
 ## [2.5.0] - 2026-03-16
 
 ### Added
