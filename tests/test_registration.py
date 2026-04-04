@@ -464,26 +464,40 @@ class TestServerNotFound:
     """Tests for server not found handling."""
 
     @pytest.mark.asyncio
-    async def test_register_server_not_found(self):
-        """Raise RegistrationError when server ID doesn't exist."""
+    async def test_register_server_not_found_auto_creates(self):
+        """404 should trigger auto-create via POST instead of raising."""
         from capiscio_mcp.registration import (
             register_server_identity,
-            RegistrationError,
         )
 
-        with patch("capiscio_mcp.registration.requests.put") as mock_put:
-            mock_response = MagicMock()
-            mock_response.status_code = 404
-            mock_put.return_value = mock_response
+        new_server_id = "aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee"
+        with (
+            patch("capiscio_mcp.registration.requests.put") as mock_put,
+            patch("capiscio_mcp.registration.requests.post") as mock_post,
+        ):
+            mock_put_resp = MagicMock()
+            mock_put_resp.status_code = 404
+            mock_put.return_value = mock_put_resp
 
-            with pytest.raises(RegistrationError, match="not found"):
-                await register_server_identity(
-                    server_id="nonexistent-server",
-                    did="did:key:z6MkNotFound",
-                    public_key="-----BEGIN PUBLIC KEY-----\ntest",
-                    api_key="key",
-                    ca_url="https://api.capisc.io",
-                )
+            mock_post_resp = MagicMock()
+            mock_post_resp.status_code = 200
+            mock_post_resp.json.return_value = {
+                "success": True,
+                "data": {"id": new_server_id},
+            }
+            mock_post.return_value = mock_post_resp
+
+            result = await register_server_identity(
+                server_id="nonexistent-server",
+                did="did:key:z6MkNotFound",
+                public_key="-----BEGIN PUBLIC KEY-----\ntest",
+                api_key="key",
+                ca_url="https://api.capisc.io",
+            )
+
+        assert result["created"] is True
+        assert result["data"]["id"] == new_server_id
+        mock_post.assert_called_once()
 
 
 class TestKeyGenerationWithErrorMessage:

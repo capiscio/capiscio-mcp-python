@@ -251,6 +251,7 @@ def _register_server_identity_sync(
     did: str,
     public_key: str,
     ca_url: str,
+    name: str | None = None,
 ) -> dict:
     """Sync implementation of register_server_identity."""
     url = f"{ca_url.rstrip('/')}/v1/sdk/servers/{server_id}"
@@ -283,7 +284,20 @@ def _register_server_identity_sync(
         elif response.status_code == 401:
             raise RegistrationError("Invalid API key", status_code=401)
         elif response.status_code == 404:
-            raise RegistrationError(f"Server not found: {server_id}", status_code=404)
+            # Server doesn't exist — auto-create via POST
+            logger.info("Server %s not found, creating automatically...", server_id)
+            try:
+                return _auto_create_server(
+                    did=did,
+                    public_key=public_key,
+                    ca_url=ca_url,
+                    headers=headers,
+                    name=name or f"MCP Server {server_id[:8]}",
+                )
+            except RegistrationError:
+                raise
+            except requests.RequestException as e:
+                raise RegistrationError(f"Server auto-creation failed: {e}") from e
         else:
             raise RegistrationError(
                 f"Registration failed with status {response.status_code}",
@@ -292,6 +306,43 @@ def _register_server_identity_sync(
 
     except requests.RequestException as e:
         raise RegistrationError(f"Network error: {e}") from e
+
+
+def _auto_create_server(
+    did: str,
+    public_key: str,
+    ca_url: str,
+    headers: dict,
+    name: str,
+) -> dict:
+    """Create a new MCP server when the specified ID doesn't exist."""
+    create_url = f"{ca_url.rstrip('/')}/v1/sdk/servers"
+    create_payload = {
+        "name": name,
+        "did": did,
+        "publicKey": public_key,
+    }
+    try:
+        resp = requests.post(create_url, json=create_payload, headers=headers, timeout=30)
+        if resp.status_code in (200, 201):
+            data = resp.json()
+            server_data = data.get("data", {})
+            new_id = server_data.get("id", "unknown")
+            logger.info("Auto-created MCP server %s: %s", new_id, did)
+            return {
+                "success": True,
+                "created": True,
+                "message": f"Server auto-created as {new_id}",
+                "data": server_data,
+            }
+        else:
+            error_msg = resp.text[:200]
+            raise RegistrationError(
+                f"Auto-create failed (status {resp.status_code}): {error_msg}",
+                status_code=resp.status_code,
+            )
+    except requests.RequestException as e:
+        raise RegistrationError(f"Network error during auto-create: {e}") from e
 
 
 def register_server_identity_sync(

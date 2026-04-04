@@ -379,8 +379,27 @@ class MCPServerIdentity:
         # ------------------------------------------------------------------
         assert did is not None  # narrowing for type checkers
         effective_pub_pem = pub_pem or ""
+
+        # Check for a previously auto-created server ID (persisted after 404 → POST)
+        _resolved_id_file = effective_keys_dir / ".resolved_server_id"
+        if _resolved_id_file.exists():
+            try:
+                resolved = _resolved_id_file.read_text().strip()
+            except (OSError, UnicodeDecodeError) as exc:
+                logger.warning(
+                    "Could not read resolved server ID from %s: %s",
+                    _resolved_id_file, exc,
+                )
+                resolved = ""
+            if resolved and resolved != server_id:
+                logger.info(
+                    "Using previously resolved server ID %s (env had %s)",
+                    resolved, server_id,
+                )
+                server_id = resolved
+
         try:
-            await register_server_identity(
+            reg_result = await register_server_identity(
                 server_id=server_id,
                 api_key=api_key,
                 did=did,
@@ -388,6 +407,22 @@ class MCPServerIdentity:
                 ca_url=server_url,
             )
             logger.info("Server identity registered: %s", did)
+            # If server was auto-created, persist the new ID for subsequent runs
+            if reg_result.get("created") and reg_result.get("data"):
+                new_id = reg_result["data"].get("id")
+                if new_id and str(new_id) != server_id:
+                    logger.info(
+                        "Server auto-created with new ID %s (was %s)",
+                        new_id, server_id,
+                    )
+                    server_id = str(new_id)
+                    try:
+                        _resolved_id_file.write_text(server_id)
+                    except OSError as write_exc:
+                        logger.warning(
+                            "Could not persist resolved server ID to %s: %s",
+                            _resolved_id_file, write_exc,
+                        )
         except RegistrationError as exc:
             status_code = getattr(exc, "status_code", None)
             if status_code in (None, 409):
@@ -469,8 +504,37 @@ class MCPServerIdentity:
         if not server_id:
             raise ValueError(
                 "CAPISCIO_SERVER_ID environment variable is required. "
-                "Create an MCP server at https://app.capisc.io"
+                "Create an MCP server at https://app.capisc.io or set to 'auto'."
             )
+
+        # "auto" means: auto-create on the registry, persist the ID locally.
+        # Uses a stable keys directory so multiple subprocesses share identity.
+        if server_id.lower() == "auto":
+            import uuid as _uuid
+            auto_keys_dir = DEFAULT_MCP_KEYS_DIR / "_auto"
+            auto_keys_dir.mkdir(parents=True, exist_ok=True)
+            resolved_file = auto_keys_dir / ".resolved_server_id"
+            if resolved_file.exists():
+                try:
+                    resolved_server_id = resolved_file.read_text().strip()
+                except (OSError, UnicodeDecodeError) as exc:
+                    resolved_server_id = ""
+                    logger.warning(
+                        "Auto mode: could not read %s: %s", resolved_file, exc,
+                    )
+                if resolved_server_id:
+                    server_id = resolved_server_id
+                    logger.info("Auto mode: reusing persisted server ID %s", server_id)
+                else:
+                    server_id = str(_uuid.uuid4())
+                    logger.warning(
+                        "Auto mode: persisted server ID was empty; "
+                        "created placeholder %s", server_id,
+                    )
+            else:
+                server_id = str(_uuid.uuid4())
+                logger.info("Auto mode: created placeholder server ID %s", server_id)
+            kwargs["keys_dir"] = str(auto_keys_dir)
 
         api_key = os.environ.get("CAPISCIO_API_KEY")
         if not api_key:
