@@ -177,7 +177,7 @@ class TestMCPServerIdentityConnect:
 
         with (
             patch("capiscio_mcp.connect.generate_server_keypair", new_callable=AsyncMock, return_value=fake_keys),
-            patch("capiscio_mcp.connect.register_server_identity", new_callable=AsyncMock),
+            patch("capiscio_mcp.connect.register_server_identity", new_callable=AsyncMock, return_value={"success": True}),
             patch("capiscio_mcp.connect._issue_badge", new_callable=AsyncMock, return_value=FAKE_BADGE),
             patch("capiscio_mcp.connect.ServerBadgeKeeper") as MockKeeper,
         ):
@@ -338,7 +338,7 @@ class TestMCPServerIdentityConnect:
 
         with (
             patch("capiscio_mcp.connect.generate_server_keypair", new_callable=AsyncMock, return_value=fake_keys),
-            patch("capiscio_mcp.connect.register_server_identity", new_callable=AsyncMock),
+            patch("capiscio_mcp.connect.register_server_identity", new_callable=AsyncMock, return_value={"success": True}),
             patch("capiscio_mcp.connect._issue_badge", new_callable=AsyncMock, return_value=None),
             patch("capiscio_mcp.connect._log_key_capture_hint") as mock_hint,
         ):
