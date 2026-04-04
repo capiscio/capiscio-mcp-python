@@ -383,7 +383,14 @@ class MCPServerIdentity:
         # Check for a previously auto-created server ID (persisted after 404 → POST)
         _resolved_id_file = effective_keys_dir / ".resolved_server_id"
         if _resolved_id_file.exists():
-            resolved = _resolved_id_file.read_text().strip()
+            try:
+                resolved = _resolved_id_file.read_text().strip()
+            except (OSError, UnicodeDecodeError) as exc:
+                logger.warning(
+                    "Could not read resolved server ID from %s: %s",
+                    _resolved_id_file, exc,
+                )
+                resolved = ""
             if resolved and resolved != server_id:
                 logger.info(
                     "Using previously resolved server ID %s (env had %s)",
@@ -409,7 +416,13 @@ class MCPServerIdentity:
                         new_id, server_id,
                     )
                     server_id = str(new_id)
-                    _resolved_id_file.write_text(server_id)
+                    try:
+                        _resolved_id_file.write_text(server_id)
+                    except OSError as write_exc:
+                        logger.warning(
+                            "Could not persist resolved server ID to %s: %s",
+                            _resolved_id_file, write_exc,
+                        )
         except RegistrationError as exc:
             status_code = getattr(exc, "status_code", None)
             if status_code in (None, 409):
@@ -497,14 +510,28 @@ class MCPServerIdentity:
         # "auto" means: auto-create on the registry, persist the ID locally.
         # Uses a stable keys directory so multiple subprocesses share identity.
         if server_id.lower() == "auto":
+            import uuid as _uuid
             auto_keys_dir = DEFAULT_MCP_KEYS_DIR / "_auto"
             auto_keys_dir.mkdir(parents=True, exist_ok=True)
             resolved_file = auto_keys_dir / ".resolved_server_id"
             if resolved_file.exists():
-                server_id = resolved_file.read_text().strip()
-                logger.info("Auto mode: reusing persisted server ID %s", server_id)
+                try:
+                    resolved_server_id = resolved_file.read_text().strip()
+                except (OSError, UnicodeDecodeError) as exc:
+                    resolved_server_id = ""
+                    logger.warning(
+                        "Auto mode: could not read %s: %s", resolved_file, exc,
+                    )
+                if resolved_server_id:
+                    server_id = resolved_server_id
+                    logger.info("Auto mode: reusing persisted server ID %s", server_id)
+                else:
+                    server_id = str(_uuid.uuid4())
+                    logger.warning(
+                        "Auto mode: persisted server ID was empty; "
+                        "created placeholder %s", server_id,
+                    )
             else:
-                import uuid as _uuid
                 server_id = str(_uuid.uuid4())
                 logger.info("Auto mode: created placeholder server ID %s", server_id)
             kwargs["keys_dir"] = str(auto_keys_dir)

@@ -286,14 +286,18 @@ def _register_server_identity_sync(
         elif response.status_code == 404:
             # Server doesn't exist — auto-create via POST
             logger.info("Server %s not found, creating automatically...", server_id)
-            return _auto_create_server(
-                api_key=api_key,
-                did=did,
-                public_key=public_key,
-                ca_url=ca_url,
-                headers=headers,
-                name=name or f"MCP Server {server_id[:8]}",
-            )
+            try:
+                return _auto_create_server(
+                    did=did,
+                    public_key=public_key,
+                    ca_url=ca_url,
+                    headers=headers,
+                    name=name or f"MCP Server {server_id[:8]}",
+                )
+            except RegistrationError:
+                raise
+            except requests.RequestException as e:
+                raise RegistrationError(f"Server auto-creation failed: {e}") from e
         else:
             raise RegistrationError(
                 f"Registration failed with status {response.status_code}",
@@ -305,7 +309,6 @@ def _register_server_identity_sync(
 
 
 def _auto_create_server(
-    api_key: str,
     did: str,
     public_key: str,
     ca_url: str,
