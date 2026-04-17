@@ -17,6 +17,8 @@ from capiscio_mcp._core.lifecycle import (
     start_core_process,
     ProcessSupervisor,
     BinaryNotFoundError,
+    _fetch_expected_checksum,
+    _verify_checksum,
 )
 from capiscio_mcp._core.version import CORE_MIN_VERSION
 
@@ -399,3 +401,84 @@ class TestBinaryNotFoundError:
         from capiscio_mcp.errors import CoreConnectionError
         error = BinaryNotFoundError("test")
         assert isinstance(error, CoreConnectionError)
+
+
+class TestFetchExpectedChecksum:
+    """Tests for _fetch_expected_checksum function."""
+
+    @patch("capiscio_mcp._core.lifecycle.requests.get")
+    def test_parses_standard_format(self, mock_get):
+        """Should parse 'hash  filename' format."""
+        mock_resp = MagicMock()
+        mock_resp.text = (
+            "a" * 64 + "  capiscio-linux-amd64\n" +
+            "b" * 64 + "  capiscio-darwin-arm64\n"
+        )
+        mock_resp.raise_for_status = MagicMock()
+        mock_get.return_value.__enter__ = MagicMock(return_value=mock_resp)
+        mock_get.return_value = mock_resp
+
+        result = _fetch_expected_checksum("2.6.0", "capiscio-darwin-arm64")
+        assert result == "b" * 64
+
+    @patch("capiscio_mcp._core.lifecycle.requests.get")
+    def test_handles_binary_mode_star(self, mock_get):
+        """Should handle sha256sum binary mode ('hash *filename')."""
+        mock_resp = MagicMock()
+        mock_resp.text = "a" * 64 + "  *capiscio-linux-amd64\n"
+        mock_resp.raise_for_status = MagicMock()
+        mock_get.return_value = mock_resp
+
+        result = _fetch_expected_checksum("2.6.0", "capiscio-linux-amd64")
+        assert result == "a" * 64
+
+    @patch("capiscio_mcp._core.lifecycle.requests.get")
+    def test_returns_none_for_missing_binary(self, mock_get):
+        """Should return None when filename is not in checksums."""
+        mock_resp = MagicMock()
+        mock_resp.text = "a" * 64 + "  capiscio-linux-amd64\n"
+        mock_resp.raise_for_status = MagicMock()
+        mock_get.return_value = mock_resp
+
+        result = _fetch_expected_checksum("2.6.0", "capiscio-windows-amd64.exe")
+        assert result is None
+
+    @patch("capiscio_mcp._core.lifecycle.requests.get")
+    def test_returns_none_on_network_error(self, mock_get):
+        """Should return None on network failure."""
+        import requests as req
+        mock_get.side_effect = req.exceptions.ConnectionError("timeout")
+
+        result = _fetch_expected_checksum("2.6.0", "capiscio-linux-amd64")
+        assert result is None
+
+    @patch("capiscio_mcp._core.lifecycle.requests.get")
+    def test_rejects_invalid_hex(self, mock_get):
+        """Should skip lines with invalid hex checksums."""
+        mock_resp = MagicMock()
+        mock_resp.text = "not-a-valid-hex  capiscio-linux-amd64\n"
+        mock_resp.raise_for_status = MagicMock()
+        mock_get.return_value = mock_resp
+
+        result = _fetch_expected_checksum("2.6.0", "capiscio-linux-amd64")
+        assert result is None
+
+
+class TestVerifyChecksum:
+    """Tests for _verify_checksum function."""
+
+    def test_matching_checksum(self, tmp_path):
+        """Should return True when checksum matches."""
+        import hashlib
+        test_file = tmp_path / "test_binary"
+        test_file.write_bytes(b"test content for checksum")
+        expected = hashlib.sha256(b"test content for checksum").hexdigest()
+
+        assert _verify_checksum(test_file, expected) is True
+
+    def test_mismatched_checksum(self, tmp_path):
+        """Should return False when checksum doesn't match."""
+        test_file = tmp_path / "test_binary"
+        test_file.write_bytes(b"test content")
+
+        assert _verify_checksum(test_file, "0" * 64) is False

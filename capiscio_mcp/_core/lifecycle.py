@@ -10,6 +10,7 @@ Handles:
 from __future__ import annotations
 
 import asyncio
+import hashlib
 import logging
 import os
 import platform
@@ -25,6 +26,7 @@ import requests
 from capiscio_mcp._core.version import (
     CORE_MIN_VERSION,
     BINARY_NAME,
+    GITHUB_REPO,
     get_download_url,
 )
 from capiscio_mcp.errors import CoreConnectionError
@@ -99,6 +101,52 @@ def get_binary_path(version: Optional[str] = None) -> Path:
     return get_cache_dir() / version / filename
 
 
+def _fetch_expected_checksum(version: str, filename: str) -> Optional[str]:
+    """Fetch the expected SHA-256 checksum from the release checksums.txt."""
+    url = f"https://github.com/{GITHUB_REPO}/releases/download/v{version}/checksums.txt"
+    try:
+        resp = requests.get(url, timeout=30)
+        resp.raise_for_status()
+        for line in resp.text.strip().splitlines():
+            line = line.strip()
+            if not line:
+                continue
+            parts = line.split(None, 1)
+            if len(parts) != 2:
+                continue
+            checksum, raw_name = parts
+            checksum = checksum.lower()
+            # Validate SHA-256 hex format
+            if len(checksum) != 64 or not all(
+                c in "0123456789abcdef" for c in checksum
+            ):
+                continue
+            # Normalize: strip leading '*' (binary mode) and path components
+            entry_name = Path(raw_name.lstrip("*")).name
+            if entry_name == Path(filename).name:
+                return checksum
+        logger.warning("Binary %s not found in checksums.txt", filename)
+        return None
+    except requests.exceptions.RequestException as e:
+        logger.warning("Could not fetch checksums.txt: %s", e)
+        return None
+
+
+def _verify_checksum(file_path: Path, expected_hash: str) -> bool:
+    """Verify SHA-256 checksum of a downloaded file."""
+    sha256 = hashlib.sha256()
+    with open(file_path, "rb") as f:
+        for chunk in iter(lambda: f.read(8192), b""):
+            sha256.update(chunk)
+    actual = sha256.hexdigest()
+    if actual != expected_hash:
+        logger.error(
+            "Checksum mismatch: expected %s, got %s", expected_hash, actual
+        )
+        return False
+    return True
+
+
 def download_binary(version: Optional[str] = None) -> Path:
     """
     Download the capiscio-core binary for the current platform.
@@ -110,7 +158,7 @@ def download_binary(version: Optional[str] = None) -> Path:
         Path to the downloaded binary
         
     Raises:
-        CoreConnectionError: If download fails
+        CoreConnectionError: If download or checksum verification fails
     """
     version = version or CORE_MIN_VERSION
     target_path = get_binary_path(version)
@@ -141,7 +189,34 @@ def download_binary(version: Optional[str] = None) -> Path:
                     for chunk in response.iter_content(chunk_size=8192):
                         f.write(chunk)
             
-            # Make executable (Unix)
+            # Verify checksum BEFORE making executable
+            require_checksum = os.environ.get(
+                "CAPISCIO_REQUIRE_CHECKSUM", ""
+            ).lower() in ("1", "true", "yes")
+            expected_hash = _fetch_expected_checksum(version, target_path.name)
+            if expected_hash is not None:
+                if not _verify_checksum(target_path, expected_hash):
+                    target_path.unlink()
+                    raise CoreConnectionError(
+                        f"Binary integrity check failed for {target_path.name}. "
+                        "The downloaded file does not match the published checksum. "
+                        "This may indicate a tampered or corrupted download."
+                    )
+                logger.info("Checksum verified for %s", target_path.name)
+            elif require_checksum:
+                target_path.unlink()
+                raise CoreConnectionError(
+                    f"Checksum verification required (CAPISCIO_REQUIRE_CHECKSUM=true) "
+                    f"but checksums.txt is not available for v{version}. "
+                    "Cannot verify binary integrity."
+                )
+            else:
+                logger.warning(
+                    "Could not verify binary integrity (checksums.txt not available). "
+                    "Set CAPISCIO_REQUIRE_CHECKSUM=true to enforce verification."
+                )
+
+            # Make executable only after checksum passes (Unix)
             if os_name != "windows":
                 st = os.stat(target_path)
                 os.chmod(target_path, st.st_mode | stat.S_IEXEC)
