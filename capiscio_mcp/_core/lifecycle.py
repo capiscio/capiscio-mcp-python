@@ -215,7 +215,7 @@ async def ensure_binary(version: Optional[str] = None) -> Path:
             logger.warning(f"CAPISCIO_BINARY_PATH set but file not found: {binary_path}")
     
     # Run download in thread pool to avoid blocking
-    loop = asyncio.get_event_loop()
+    loop = asyncio.get_running_loop()
     return await loop.run_in_executor(None, download_binary, version)
 
 

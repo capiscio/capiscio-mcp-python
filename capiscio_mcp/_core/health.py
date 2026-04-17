@@ -108,10 +108,11 @@ async def wait_healthy(
     """
     from capiscio_mcp._proto.capiscio.v1 import mcp_pb2
     
-    start_time = asyncio.get_event_loop().time()
+    loop = asyncio.get_running_loop()
+    start_time = loop.time()
     last_error = None
     
-    while (asyncio.get_event_loop().time() - start_time) < timeout:
+    while (loop.time() - start_time) < timeout:
         try:
             request = mcp_pb2.HealthRequest(client_version="")
             response = await asyncio.wait_for(

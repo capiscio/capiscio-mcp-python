@@ -233,7 +233,7 @@ async def register_server_identity(
         )
     """
     # Run in thread pool to avoid blocking async loop
-    loop = asyncio.get_event_loop()
+    loop = asyncio.get_running_loop()
     return await loop.run_in_executor(
         None,
         _register_server_identity_sync,
