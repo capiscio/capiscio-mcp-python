@@ -108,9 +108,23 @@ def _fetch_expected_checksum(version: str, filename: str) -> Optional[str]:
         resp = requests.get(url, timeout=30)
         resp.raise_for_status()
         for line in resp.text.strip().splitlines():
-            parts = line.split()
-            if len(parts) == 2 and parts[1] == filename:
-                return parts[0]
+            line = line.strip()
+            if not line:
+                continue
+            parts = line.split(None, 1)
+            if len(parts) != 2:
+                continue
+            checksum, raw_name = parts
+            checksum = checksum.lower()
+            # Validate SHA-256 hex format
+            if len(checksum) != 64 or not all(
+                c in "0123456789abcdef" for c in checksum
+            ):
+                continue
+            # Normalize: strip leading '*' (binary mode) and path components
+            entry_name = Path(raw_name.lstrip("*")).name
+            if entry_name == Path(filename).name:
+                return checksum
         logger.warning("Binary %s not found in checksums.txt", filename)
         return None
     except requests.exceptions.RequestException as e:
