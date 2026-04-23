@@ -98,10 +98,15 @@ def _log_key_capture_hint(server_id: str, private_key_pem: str) -> None:
     import hashlib as _hashlib
     import sys as _sys
 
-    # Compute fingerprint from public key (first 8 hex chars of SHA-256)
-    key = load_pem_private_key(private_key_pem.encode(), password=None)
-    pub_raw = key.public_key().public_bytes(Encoding.Raw, PublicFormat.Raw)
-    fingerprint = _hashlib.sha256(pub_raw).hexdigest()[:16]
+    # Compute fingerprint from public key (first 16 hex chars of SHA-256).
+    # Best-effort: never let fingerprint computation block identity setup.
+    fingerprint = "<unavailable>"
+    try:
+        key = load_pem_private_key(private_key_pem.encode(), password=None)
+        pub_raw = key.public_key().public_bytes(Encoding.Raw, PublicFormat.Raw)
+        fingerprint = _hashlib.sha256(pub_raw).hexdigest()[:16]
+    except Exception:
+        pass
 
     hint = (
         "\n"
