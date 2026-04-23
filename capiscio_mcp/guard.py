@@ -285,6 +285,7 @@ async def evaluate_tool_access(
             min_trust_level=effective_config.min_trust_level,
             accept_level_zero=effective_config.accept_level_zero,
             allowed_tools=effective_config.allowed_tools or [],
+            # TODO: wire require_badge once the proto field is added in capiscio-core
         ),
     )
     

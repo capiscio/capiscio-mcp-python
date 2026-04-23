@@ -92,28 +92,37 @@ def _load_private_key_pem(pem_text: str) -> tuple[Ed25519PrivateKey, str, str, s
 def _log_key_capture_hint(server_id: str, private_key_pem: str) -> None:
     """Write a one-time hint to stderr telling the user how to persist key material.
 
-    Uses ``print(..., file=sys.stderr)`` instead of the logger so the private
-    key never enters log aggregation pipelines.  The hint is only emitted on
-    first-run key generation.
+    Only the key fingerprint is emitted — never the private key itself.
+    The hint is only emitted on first-run key generation.
     """
-    import sys as _sys  # local import — only needed for this hint
+    import hashlib as _hashlib
+    import sys as _sys
 
-    escaped_pem = private_key_pem.replace("\n", "\\n")
+    # Compute fingerprint from public key (first 16 hex chars of SHA-256).
+    # Best-effort: never let fingerprint computation block identity setup.
+    fingerprint = "<unavailable>"
+    try:
+        key = load_pem_private_key(private_key_pem.encode(), password=None)
+        pub_raw = key.public_key().public_bytes(Encoding.Raw, PublicFormat.Raw)
+        fingerprint = _hashlib.sha256(pub_raw).hexdigest()[:16]
+    except Exception:
+        pass
+
     hint = (
         "\n"
         "  ╔══════════════════════════════════════════════════════════════╗\n"
         "  ║  New server identity generated — save key for persistence  ║\n"
         "  ╚══════════════════════════════════════════════════════════════╝\n"
         "\n"
+        f"  Key fingerprint: {fingerprint}\n"
+        "\n"
         "  If this server runs in an ephemeral environment (containers,\n"
         "  serverless, CI) the identity will be lost on restart unless\n"
         "  you persist the private key.\n"
         "\n"
-        "  Add to your secrets manager / .env:\n"
-        "\n"
-        f'    CAPISCIO_SERVER_PRIVATE_KEY_PEM="{escaped_pem}"\n'
-        "\n"
-        "  The DID will be re-derived automatically on startup.\n"
+        "  Set the CAPISCIO_SERVER_PRIVATE_KEY_PEM environment variable\n"
+        "  to the contents of your key file. The DID will be re-derived\n"
+        "  automatically on startup.\n"
     )
     print(hint, file=_sys.stderr, flush=True)
 

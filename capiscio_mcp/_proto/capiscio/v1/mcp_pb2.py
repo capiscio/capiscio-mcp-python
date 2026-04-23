@@ -69,6 +69,7 @@ class EvaluateConfig:
     min_trust_level: int = 0
     accept_level_zero: bool = False
     allowed_tools: List[str] = field(default_factory=list)
+    require_badge: bool = False
 
 
 @dataclass
