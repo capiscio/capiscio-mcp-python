@@ -244,6 +244,8 @@ async def evaluate_tool_access(
     params: dict[str, Any],
     credential: Optional[CallerCredential] = None,
     config: Optional[GuardConfig] = None,
+    capability_class: Optional[str] = None,
+    deny_on_unknown_class: Optional[bool] = None,
 ) -> GuardResult:
     """
     Evaluate tool access via capiscio-core.
@@ -255,6 +257,8 @@ async def evaluate_tool_access(
         params: Tool parameters (will be hashed, never sent raw)
         credential: Caller credential (default: from context)
         config: Guard configuration
+        capability_class: RFC-008 capability class for policy evaluation
+        deny_on_unknown_class: RFC-008 unknown class behavior (None/True=deny, False=allow)
         
     Returns:
         GuardResult with decision and evidence
@@ -295,6 +299,12 @@ async def evaluate_tool_access(
     elif effective_credential.api_key:
         request.api_key = effective_credential.api_key
     # If neither: anonymous (implicit)
+
+    # RFC-008: Set capability class fields
+    if capability_class:
+        request.capability_class = capability_class
+    if deny_on_unknown_class is not None:
+        request.deny_on_unknown_class = deny_on_unknown_class
     
     # Make RPC call
     response = await client.stub.EvaluateToolAccess(request)
@@ -351,6 +361,8 @@ def guard(
     min_trust_level: Optional[int] = None,
     tool_name: Optional[str] = None,
     require_badge: bool = False,
+    capability_class: Optional[str] = None,
+    deny_on_unknown_class: Optional[bool] = None,
 ) -> Callable[[Callable[P, Coroutine[Any, Any, R]]], Callable[P, Coroutine[Any, Any, R]]]:
     ...
 
@@ -362,6 +374,8 @@ def guard(
     min_trust_level: Optional[int] = None,
     tool_name: Optional[str] = None,
     require_badge: bool = False,
+    capability_class: Optional[str] = None,
+    deny_on_unknown_class: Optional[bool] = None,
 ) -> Union[
     Callable[P, Coroutine[Any, Any, R]],
     Callable[[Callable[P, Coroutine[Any, Any, R]]], Callable[P, Coroutine[Any, Any, R]]],
@@ -377,6 +391,8 @@ def guard(
         min_trust_level: Shorthand for config.min_trust_level
         tool_name: Override tool name (default: function name)
         require_badge: If True, deny anonymous/API key access
+        capability_class: RFC-008 capability class for policy evaluation
+        deny_on_unknown_class: RFC-008 unknown class behavior (None/True=deny, False=allow)
     
     Returns:
         Decorated function that enforces access control
@@ -390,6 +406,11 @@ def guard(
         # With trust level requirement
         @guard(min_trust_level=2)
         async def execute_query(sql: str) -> list[dict]:
+            ...
+        
+        # With capability class enforcement
+        @guard(capability_class="invoice-management")
+        async def create_invoice(amount: float) -> dict:
             ...
         
         # With full configuration
@@ -423,6 +444,8 @@ def guard(
                 tool_name=effective_tool_name,
                 params=params,
                 config=effective_config,
+                capability_class=capability_class,
+                deny_on_unknown_class=deny_on_unknown_class,
             )
             
             # Check decision
@@ -459,6 +482,8 @@ def guard_sync(
     min_trust_level: Optional[int] = None,
     tool_name: Optional[str] = None,
     require_badge: bool = False,
+    capability_class: Optional[str] = None,
+    deny_on_unknown_class: Optional[bool] = None,
 ) -> Union[Callable[P, R], Callable[[Callable[P, R]], Callable[P, R]]]:
     """
     Sync decorator to guard MCP tool execution.
@@ -499,6 +524,8 @@ def guard_sync(
                     tool_name=effective_tool_name,
                     params=params,
                     config=effective_config,
+                    capability_class=capability_class,
+                    deny_on_unknown_class=deny_on_unknown_class,
                 )
             
             try:
