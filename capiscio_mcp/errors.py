@@ -77,12 +77,18 @@ class GuardError(CapiscioMCPError):
         evidence_id: str = "",
         agent_did: Optional[str] = None,
         trust_level: Optional[int] = None,
+        error_code: Optional[str] = None,
+        requested_capability: Optional[str] = None,
+        presented_capability: Optional[str] = None,
     ):
         self.reason = reason
         self.detail = detail
         self.evidence_id = evidence_id
         self.agent_did = agent_did
         self.trust_level = trust_level
+        self.error_code = error_code
+        self.requested_capability = requested_capability
+        self.presented_capability = presented_capability
         
         message = f"{reason.value}: {detail}"
         if evidence_id:

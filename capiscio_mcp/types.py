@@ -64,6 +64,7 @@ class DenyReason(str, Enum):
     # Policy issues
     TOOL_NOT_ALLOWED = "tool_not_allowed"     # Tool not in allowed list
     POLICY_DENIED = "policy_denied"           # Policy evaluation failed
+    SCOPE_INSUFFICIENT = "scope_insufficient" # RFC-008: Capability class scope insufficient
     
     # Other
     INTERNAL_ERROR = "internal_error"         # Unexpected error
