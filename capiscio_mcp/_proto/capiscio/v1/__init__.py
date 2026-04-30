@@ -62,6 +62,8 @@ if not hasattr(mcp_pb2, 'TOOL_ISSUER_UNTRUSTED'):
     mcp_pb2.TOOL_ISSUER_UNTRUSTED = mcp_pb2.MCP_DENY_REASON_ISSUER_UNTRUSTED
 if not hasattr(mcp_pb2, 'TOOL_POLICY_DENIED'):
     mcp_pb2.TOOL_POLICY_DENIED = mcp_pb2.MCP_DENY_REASON_POLICY_DENIED
+if not hasattr(mcp_pb2, 'TOOL_SCOPE_INSUFFICIENT'):
+    mcp_pb2.TOOL_SCOPE_INSUFFICIENT = mcp_pb2.MCP_DENY_REASON_SCOPE_INSUFFICIENT
 
 # ServerState
 if not hasattr(mcp_pb2, 'SERVER_STATE_UNSPECIFIED'):

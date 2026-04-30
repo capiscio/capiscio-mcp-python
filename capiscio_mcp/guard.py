@@ -149,6 +149,11 @@ class GuardResult:
     # Evidence
     evidence_id: str = ""
     evidence_json: str = ""
+    
+    # RFC-008: Structured rejection metadata
+    error_code: Optional[str] = None
+    requested_capability: Optional[str] = None
+    presented_capability: Optional[str] = None
 
 
 def compute_params_hash(params: dict[str, Any]) -> str:
@@ -323,6 +328,7 @@ async def evaluate_tool_access(
             mcp_pb2.TOOL_NOT_ALLOWED: DenyReason.TOOL_NOT_ALLOWED,
             mcp_pb2.TOOL_ISSUER_UNTRUSTED: DenyReason.ISSUER_UNTRUSTED,
             mcp_pb2.TOOL_POLICY_DENIED: DenyReason.POLICY_DENIED,
+            mcp_pb2.TOOL_SCOPE_INSUFFICIENT: DenyReason.SCOPE_INSUFFICIENT,
         }
         deny_reason = deny_reason_map.get(response.deny_reason, DenyReason.INTERNAL_ERROR)
     
@@ -343,6 +349,9 @@ async def evaluate_tool_access(
         trust_level=response.trust_level,
         evidence_id=response.evidence_id,
         evidence_json=response.evidence_json,
+        error_code=response.error_code or None,
+        requested_capability=response.requested_capability or None,
+        presented_capability=response.presented_capability or None,
     )
 
 
@@ -450,12 +459,29 @@ def guard(
             
             # Check decision
             if result.decision == Decision.DENY:
+                logger.warning(
+                    "capiscio.policy_enforced: tool=%s decision=DENY "
+                    "agent=%s trust_level=%s reason=%s error_code=%s "
+                    "requested_capability=%s presented_capability=%s "
+                    "evidence_id=%s",
+                    effective_tool_name,
+                    result.agent_did,
+                    result.trust_level,
+                    result.deny_reason,
+                    result.error_code,
+                    result.requested_capability,
+                    result.presented_capability,
+                    result.evidence_id,
+                )
                 raise GuardError(
                     reason=result.deny_reason or DenyReason.INTERNAL_ERROR,
                     detail=result.deny_detail or "Access denied",
                     evidence_id=result.evidence_id,
                     agent_did=result.agent_did,
                     trust_level=result.trust_level,
+                    error_code=result.error_code,
+                    requested_capability=result.requested_capability,
+                    presented_capability=result.presented_capability,
                 )
             
             # Log successful access
@@ -544,12 +570,29 @@ def guard_sync(
             
             # Check decision
             if result.decision == Decision.DENY:
+                logger.warning(
+                    "capiscio.policy_enforced: tool=%s decision=DENY "
+                    "agent=%s trust_level=%s reason=%s error_code=%s "
+                    "requested_capability=%s presented_capability=%s "
+                    "evidence_id=%s",
+                    effective_tool_name,
+                    result.agent_did,
+                    result.trust_level,
+                    result.deny_reason,
+                    result.error_code,
+                    result.requested_capability,
+                    result.presented_capability,
+                    result.evidence_id,
+                )
                 raise GuardError(
                     reason=result.deny_reason or DenyReason.INTERNAL_ERROR,
                     detail=result.deny_detail or "Access denied",
                     evidence_id=result.evidence_id,
                     agent_did=result.agent_did,
                     trust_level=result.trust_level,
+                    error_code=result.error_code,
+                    requested_capability=result.requested_capability,
+                    presented_capability=result.presented_capability,
                 )
             
             # Execute tool

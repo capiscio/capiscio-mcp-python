@@ -25,7 +25,11 @@ _sym_db = _symbol_database.Default()
 from google.protobuf import timestamp_pb2 as google_dot_protobuf_dot_timestamp__pb2
 
 
-DESCRIPTOR = _descriptor_pool.Default().AddSerializedFile(b'\n\x15\x63\x61piscio/v1/mcp.proto\x12\x0b\x63\x61piscio.v1\x1a\x1fgoogle/protobuf/timestamp.proto\"\xbe\x03\n\x19\x45valuateToolAccessRequest\x12\x11\n\ttool_name\x18\x01 \x01(\t\x12\x13\n\x0bparams_hash\x18\x02 \x01(\t\x12\x15\n\rserver_origin\x18\x03 \x01(\t\x12\x13\n\tbadge_jws\x18\x04 \x01(\tH\x00\x12\x11\n\x07\x61pi_key\x18\x05 \x01(\tH\x00\x12\x16\n\x0epolicy_version\x18\x06 \x01(\t\x12+\n\x06\x63onfig\x18\x07 \x01(\x0b\x32\x1b.capiscio.v1.EvaluateConfig\x12\x18\n\x10\x65nforcement_mode\x18\x08 \x01(\t\x12\x18\n\x10\x63\x61pability_class\x18\n \x01(\t\x12\x13\n\x0b\x65nvelope_id\x18\x0b \x01(\t\x12\x18\n\x10\x64\x65legation_depth\x18\x0c \x01(\x05\x12\x18\n\x10\x63onstraints_json\x18\r \x01(\t\x12\x1f\n\x17parent_constraints_json\x18\x0e \x01(\t\x12\"\n\x15\x64\x65ny_on_unknown_class\x18\x0f \x01(\x08H\x01\x88\x01\x01\x42\x13\n\x11\x63\x61ller_credentialB\x18\n\x16_deny_on_unknown_classJ\x04\x08\t\x10\n\"t\n\x0e\x45valuateConfig\x12\x17\n\x0ftrusted_issuers\x18\x01 \x03(\t\x12\x17\n\x0fmin_trust_level\x18\x02 \x01(\x05\x12\x19\n\x11\x61\x63\x63\x65pt_level_zero\x18\x03 \x01(\x08\x12\x15\n\rallowed_tools\x18\x04 \x03(\t\"\xd3\x03\n\x1a\x45valuateToolAccessResponse\x12*\n\x08\x64\x65\x63ision\x18\x01 \x01(\x0e\x32\x18.capiscio.v1.MCPDecision\x12/\n\x0b\x64\x65ny_reason\x18\x02 \x01(\x0e\x32\x1a.capiscio.v1.MCPDenyReason\x12\x13\n\x0b\x64\x65ny_detail\x18\x03 \x01(\t\x12\x11\n\tagent_did\x18\x04 \x01(\t\x12\x11\n\tbadge_jti\x18\x05 \x01(\t\x12-\n\nauth_level\x18\x06 \x01(\x0e\x32\x19.capiscio.v1.MCPAuthLevel\x12\x13\n\x0btrust_level\x18\x07 \x01(\x05\x12\x15\n\revidence_json\x18\x08 \x01(\t\x12\x13\n\x0b\x65vidence_id\x18\t \x01(\t\x12-\n\ttimestamp\x18\n \x01(\x0b\x32\x1a.google.protobuf.Timestamp\x12\x1a\n\x12policy_decision_id\x18\x0b \x01(\t\x12\x17\n\x0fpolicy_decision\x18\x0c \x01(\t\x12\x18\n\x10\x65nforcement_mode\x18\r \x01(\t\x12/\n\x0bobligations\x18\x0e \x03(\x0b\x32\x1a.capiscio.v1.MCPObligation\"2\n\rMCPObligation\x12\x0c\n\x04type\x18\x01 \x01(\t\x12\x13\n\x0bparams_json\x18\x02 \x01(\t\"\xe3\x01\n\x15PolicyDecisionRequest\x12+\n\x07subject\x18\x01 \x01(\x0b\x32\x1a.capiscio.v1.PolicySubject\x12)\n\x06\x61\x63tion\x18\x02 \x01(\x0b\x32\x19.capiscio.v1.PolicyAction\x12-\n\x08resource\x18\x03 \x01(\x0b\x32\x1b.capiscio.v1.PolicyResource\x12)\n\x06\x63onfig\x18\x04 \x01(\x0b\x32\x19.capiscio.v1.PolicyConfig\x12\x18\n\x10\x62reakglass_token\x18\x05 \x01(\t\"d\n\rPolicySubject\x12\x0b\n\x03\x64id\x18\x01 \x01(\t\x12\x11\n\tbadge_jti\x18\x02 \x01(\t\x12\x0b\n\x03ial\x18\x03 \x01(\t\x12\x13\n\x0btrust_level\x18\x04 \x01(\t\x12\x11\n\tbadge_exp\x18\x05 \x01(\x03\";\n\x0cPolicyAction\x12\x11\n\toperation\x18\x01 \x01(\t\x12\x18\n\x10\x63\x61pability_class\x18\x02 \x01(\t\"$\n\x0ePolicyResource\x12\x12\n\nidentifier\x18\x01 \x01(\t\"\x98\x01\n\x0cPolicyConfig\x12\x14\n\x0cpdp_endpoint\x18\x01 \x01(\t\x12\x16\n\x0epdp_timeout_ms\x18\x02 \x01(\x05\x12\x18\n\x10\x65nforcement_mode\x18\x03 \x01(\t\x12\x0e\n\x06pep_id\x18\x04 \x01(\t\x12\x11\n\tworkspace\x18\x05 \x01(\t\x12\x1d\n\x15\x62reakglass_public_key\x18\x06 \x01(\x0c\"\xab\x02\n\x16PolicyDecisionResponse\x12\x10\n\x08\x64\x65\x63ision\x18\x01 \x01(\t\x12\x13\n\x0b\x64\x65\x63ision_id\x18\x02 \x01(\t\x12\x0e\n\x06reason\x18\x03 \x01(\t\x12\x0b\n\x03ttl\x18\x04 \x01(\x05\x12/\n\x0bobligations\x18\x05 \x03(\x0b\x32\x1a.capiscio.v1.MCPObligation\x12\x18\n\x10\x65nforcement_mode\x18\x06 \x01(\t\x12\x11\n\tcache_hit\x18\x07 \x01(\x08\x12\x1b\n\x13\x62reakglass_override\x18\x08 \x01(\x08\x12\x16\n\x0e\x62reakglass_jti\x18\t \x01(\t\x12\x12\n\nerror_code\x18\n \x01(\t\x12\x16\n\x0epdp_latency_ms\x18\x0b \x01(\x03\x12\x0e\n\x06txn_id\x18\x0c \x01(\t\"\xa6\x01\n\x1bVerifyServerIdentityRequest\x12\x12\n\nserver_did\x18\x01 \x01(\t\x12\x14\n\x0cserver_badge\x18\x02 \x01(\t\x12\x18\n\x10transport_origin\x18\x03 \x01(\t\x12\x15\n\rendpoint_path\x18\x04 \x01(\t\x12,\n\x06\x63onfig\x18\x05 \x01(\x0b\x32\x1c.capiscio.v1.MCPVerifyConfig\"\x91\x01\n\x0fMCPVerifyConfig\x12\x17\n\x0ftrusted_issuers\x18\x01 \x03(\t\x12\x17\n\x0fmin_trust_level\x18\x02 \x01(\x05\x12\x19\n\x11\x61\x63\x63\x65pt_level_zero\x18\x03 \x01(\x08\x12\x14\n\x0coffline_mode\x18\x04 \x01(\x08\x12\x1b\n\x13skip_origin_binding\x18\x05 \x01(\x08\"\xd1\x01\n\x1cVerifyServerIdentityResponse\x12*\n\x05state\x18\x01 \x01(\x0e\x32\x1b.capiscio.v1.MCPServerState\x12\x13\n\x0btrust_level\x18\x02 \x01(\x05\x12\x12\n\nserver_did\x18\x03 \x01(\t\x12\x11\n\tbadge_jti\x18\x04 \x01(\t\x12\x33\n\nerror_code\x18\x05 \x01(\x0e\x32\x1f.capiscio.v1.MCPServerErrorCode\x12\x14\n\x0c\x65rror_detail\x18\x06 \x01(\t\"\x90\x01\n\x1aParseServerIdentityRequest\x12\x33\n\x0chttp_headers\x18\x01 \x01(\x0b\x32\x1b.capiscio.v1.MCPHttpHeadersH\x00\x12\x33\n\x0cjsonrpc_meta\x18\x02 \x01(\x0b\x32\x1b.capiscio.v1.MCPJsonRpcMetaH\x00\x42\x08\n\x06source\"L\n\x0eMCPHttpHeaders\x12\x1b\n\x13\x63\x61piscio_server_did\x18\x01 \x01(\t\x12\x1d\n\x15\x63\x61piscio_server_badge\x18\x02 \x01(\t\"#\n\x0eMCPJsonRpcMeta\x12\x11\n\tmeta_json\x18\x01 \x01(\t\"a\n\x1bParseServerIdentityResponse\x12\x12\n\nserver_did\x18\x01 \x01(\t\x12\x14\n\x0cserver_badge\x18\x02 \x01(\t\x12\x18\n\x10identity_present\x18\x03 \x01(\x08\"*\n\x10MCPHealthRequest\x12\x16\n\x0e\x63lient_version\x18\x01 \x01(\t\"m\n\x11MCPHealthResponse\x12\x0f\n\x07healthy\x18\x01 \x01(\x08\x12\x14\n\x0c\x63ore_version\x18\x02 \x01(\t\x12\x15\n\rproto_version\x18\x03 \x01(\t\x12\x1a\n\x12version_compatible\x18\x04 \x01(\x08*Z\n\x0bMCPDecision\x12\x1c\n\x18MCP_DECISION_UNSPECIFIED\x10\x00\x12\x16\n\x12MCP_DECISION_ALLOW\x10\x01\x12\x15\n\x11MCP_DECISION_DENY\x10\x02*\x82\x01\n\x0cMCPAuthLevel\x12\x1e\n\x1aMCP_AUTH_LEVEL_UNSPECIFIED\x10\x00\x12\x1c\n\x18MCP_AUTH_LEVEL_ANONYMOUS\x10\x01\x12\x1a\n\x16MCP_AUTH_LEVEL_API_KEY\x10\x02\x12\x18\n\x14MCP_AUTH_LEVEL_BADGE\x10\x03*\xd3\x02\n\rMCPDenyReason\x12\x1f\n\x1bMCP_DENY_REASON_UNSPECIFIED\x10\x00\x12!\n\x1dMCP_DENY_REASON_BADGE_MISSING\x10\x01\x12!\n\x1dMCP_DENY_REASON_BADGE_INVALID\x10\x02\x12!\n\x1dMCP_DENY_REASON_BADGE_EXPIRED\x10\x03\x12!\n\x1dMCP_DENY_REASON_BADGE_REVOKED\x10\x04\x12&\n\"MCP_DENY_REASON_TRUST_INSUFFICIENT\x10\x05\x12$\n MCP_DENY_REASON_TOOL_NOT_ALLOWED\x10\x06\x12$\n MCP_DENY_REASON_ISSUER_UNTRUSTED\x10\x07\x12!\n\x1dMCP_DENY_REASON_POLICY_DENIED\x10\x08*\xac\x01\n\x0eMCPServerState\x12 \n\x1cMCP_SERVER_STATE_UNSPECIFIED\x10\x00\x12\'\n#MCP_SERVER_STATE_VERIFIED_PRINCIPAL\x10\x01\x12\'\n#MCP_SERVER_STATE_DECLARED_PRINCIPAL\x10\x02\x12&\n\"MCP_SERVER_STATE_UNVERIFIED_ORIGIN\x10\x03*\xd7\x02\n\x12MCPServerErrorCode\x12\x19\n\x15MCP_SERVER_ERROR_NONE\x10\x00\x12 \n\x1cMCP_SERVER_ERROR_DID_INVALID\x10\x01\x12\"\n\x1eMCP_SERVER_ERROR_BADGE_INVALID\x10\x02\x12\"\n\x1eMCP_SERVER_ERROR_BADGE_EXPIRED\x10\x03\x12\"\n\x1eMCP_SERVER_ERROR_BADGE_REVOKED\x10\x04\x12\'\n#MCP_SERVER_ERROR_TRUST_INSUFFICIENT\x10\x05\x12$\n MCP_SERVER_ERROR_ORIGIN_MISMATCH\x10\x06\x12\"\n\x1eMCP_SERVER_ERROR_PATH_MISMATCH\x10\x07\x12%\n!MCP_SERVER_ERROR_ISSUER_UNTRUSTED\x10\x08\x32\xf6\x03\n\nMCPService\x12\x65\n\x12\x45valuateToolAccess\x12&.capiscio.v1.EvaluateToolAccessRequest\x1a\'.capiscio.v1.EvaluateToolAccessResponse\x12\x61\n\x16\x45valuatePolicyDecision\x12\".capiscio.v1.PolicyDecisionRequest\x1a#.capiscio.v1.PolicyDecisionResponse\x12k\n\x14VerifyServerIdentity\x12(.capiscio.v1.VerifyServerIdentityRequest\x1a).capiscio.v1.VerifyServerIdentityResponse\x12h\n\x13ParseServerIdentity\x12\'.capiscio.v1.ParseServerIdentityRequest\x1a(.capiscio.v1.ParseServerIdentityResponse\x12G\n\x06Health\x12\x1d.capiscio.v1.MCPHealthRequest\x1a\x1e.capiscio.v1.MCPHealthResponseB;Z9github.com/capiscio/capiscio-core/pkg/rpc/gen/capiscio/v1b\x06proto3')
+try:
+    DESCRIPTOR = _descriptor_pool.Default().AddSerializedFile(b'\n\x15\x63\x61piscio/v1/mcp.proto\x12\x0b\x63\x61piscio.v1\x1a\x1fgoogle/protobuf/timestamp.proto\"\xbe\x03\n\x19\x45valuateToolAccessRequest\x12\x11\n\ttool_name\x18\x01 \x01(\t\x12\x13\n\x0bparams_hash\x18\x02 \x01(\t\x12\x15\n\rserver_origin\x18\x03 \x01(\t\x12\x13\n\tbadge_jws\x18\x04 \x01(\tH\x00\x12\x11\n\x07\x61pi_key\x18\x05 \x01(\tH\x00\x12\x16\n\x0epolicy_version\x18\x06 \x01(\t\x12+\n\x06\x63onfig\x18\x07 \x01(\x0b\x32\x1b.capiscio.v1.EvaluateConfig\x12\x18\n\x10\x65nforcement_mode\x18\x08 \x01(\t\x12\x18\n\x10\x63\x61pability_class\x18\n \x01(\t\x12\x13\n\x0b\x65nvelope_id\x18\x0b \x01(\t\x12\x18\n\x10\x64\x65legation_depth\x18\x0c \x01(\x05\x12\x18\n\x10\x63onstraints_json\x18\r \x01(\t\x12\x1f\n\x17parent_constraints_json\x18\x0e \x01(\t\x12\"\n\x15\x64\x65ny_on_unknown_class\x18\x0f \x01(\x08H\x01\x88\x01\x01\x42\x13\n\x11\x63\x61ller_credentialB\x18\n\x16_deny_on_unknown_classJ\x04\x08\t\x10\n\"t\n\x0e\x45valuateConfig\x12\x17\n\x0ftrusted_issuers\x18\x01 \x03(\t\x12\x17\n\x0fmin_trust_level\x18\x02 \x01(\x05\x12\x19\n\x11\x61\x63\x63\x65pt_level_zero\x18\x03 \x01(\x08\x12\x15\n\rallowed_tools\x18\x04 \x03(\t\"\xbd\x04\n\x1a\x45valuateToolAccessResponse\x12*\n\x08\x64\x65\x63ision\x18\x01 \x01(\x0e\x32\x18.capiscio.v1.MCPDecision\x12/\n\x0b\x64\x65ny_reason\x18\x02 \x01(\x0e\x32\x1a.capiscio.v1.MCPDenyReason\x12\x13\n\x0b\x64\x65ny_detail\x18\x03 \x01(\t\x12\x11\n\tagent_did\x18\x04 \x01(\t\x12\x11\n\tbadge_jti\x18\x05 \x01(\t\x12-\n\nauth_level\x18\x06 \x01(\x0e\x32\x19.capiscio.v1.MCPAuthLevel\x12\x13\n\x0btrust_level\x18\x07 \x01(\x05\x12\x15\n\revidence_json\x18\x08 \x01(\t\x12\x13\n\x0b\x65vidence_id\x18\t \x01(\t\x12-\n\ttimestamp\x18\n \x01(\x0b\x32\x1a.google.protobuf.Timestamp\x12\x1a\n\x12policy_decision_id\x18\x0b \x01(\t\x12\x17\n\x0fpolicy_decision\x18\x0c \x01(\t\x12\x18\n\x10\x65nforcement_mode\x18\r \x01(\t\x12/\n\x0bobligations\x18\x0e \x03(\x0b\x32\x1a.capiscio.v1.MCPObligation\x12\x12\n\nerror_code\x18\x0f \x01(\t\x12\x18\n\x10rejection_detail\x18\x10 \x01(\t\x12\x1c\n\x14requested_capability\x18\x11 \x01(\t\x12\x1c\n\x14presented_capability\x18\x12 \x01(\t\"2\n\rMCPObligation\x12\x0c\n\x04type\x18\x01 \x01(\t\x12\x13\n\x0bparams_json\x18\x02 \x01(\t\"\xe3\x01\n\x15PolicyDecisionRequest\x12+\n\x07subject\x18\x01 \x01(\x0b\x32\x1a.capiscio.v1.PolicySubject\x12)\n\x06\x61\x63tion\x18\x02 \x01(\x0b\x32\x19.capiscio.v1.PolicyAction\x12-\n\x08resource\x18\x03 \x01(\x0b\x32\x1b.capiscio.v1.PolicyResource\x12)\n\x06\x63onfig\x18\x04 \x01(\x0b\x32\x19.capiscio.v1.PolicyConfig\x12\x18\n\x10\x62reakglass_token\x18\x05 \x01(\t\"d\n\rPolicySubject\x12\x0b\n\x03\x64id\x18\x01 \x01(\t\x12\x11\n\tbadge_jti\x18\x02 \x01(\t\x12\x0b\n\x03ial\x18\x03 \x01(\t\x12\x13\n\x0btrust_level\x18\x04 \x01(\t\x12\x11\n\tbadge_exp\x18\x05 \x01(\x03\";\n\x0cPolicyAction\x12\x11\n\toperation\x18\x01 \x01(\t\x12\x18\n\x10\x63\x61pability_class\x18\x02 \x01(\t\"$\n\x0ePolicyResource\x12\x12\n\nidentifier\x18\x01 \x01(\t\"\x98\x01\n\x0cPolicyConfig\x12\x14\n\x0cpdp_endpoint\x18\x01 \x01(\t\x12\x16\n\x0epdp_timeout_ms\x18\x02 \x01(\x05\x12\x18\n\x10\x65nforcement_mode\x18\x03 \x01(\t\x12\x0e\n\x06pep_id\x18\x04 \x01(\t\x12\x11\n\tworkspace\x18\x05 \x01(\t\x12\x1d\n\x15\x62reakglass_public_key\x18\x06 \x01(\x0c\"\xab\x02\n\x16PolicyDecisionResponse\x12\x10\n\x08\x64\x65\x63ision\x18\x01 \x01(\t\x12\x13\n\x0b\x64\x65\x63ision_id\x18\x02 \x01(\t\x12\x0e\n\x06reason\x18\x03 \x01(\t\x12\x0b\n\x03ttl\x18\x04 \x01(\x05\x12/\n\x0bobligations\x18\x05 \x03(\x0b\x32\x1a.capiscio.v1.MCPObligation\x12\x18\n\x10\x65nforcement_mode\x18\x06 \x01(\t\x12\x11\n\tcache_hit\x18\x07 \x01(\x08\x12\x1b\n\x13\x62reakglass_override\x18\x08 \x01(\x08\x12\x16\n\x0e\x62reakglass_jti\x18\t \x01(\t\x12\x12\n\nerror_code\x18\n \x01(\t\x12\x16\n\x0epdp_latency_ms\x18\x0b \x01(\x03\x12\x0e\n\x06txn_id\x18\x0c \x01(\t\"\xa6\x01\n\x1bVerifyServerIdentityRequest\x12\x12\n\nserver_did\x18\x01 \x01(\t\x12\x14\n\x0cserver_badge\x18\x02 \x01(\t\x12\x18\n\x10transport_origin\x18\x03 \x01(\t\x12\x15\n\rendpoint_path\x18\x04 \x01(\t\x12,\n\x06\x63onfig\x18\x05 \x01(\x0b\x32\x1c.capiscio.v1.MCPVerifyConfig\"\x91\x01\n\x0fMCPVerifyConfig\x12\x17\n\x0ftrusted_issuers\x18\x01 \x03(\t\x12\x17\n\x0fmin_trust_level\x18\x02 \x01(\x05\x12\x19\n\x11\x61\x63\x63\x65pt_level_zero\x18\x03 \x01(\x08\x12\x14\n\x0coffline_mode\x18\x04 \x01(\x08\x12\x1b\n\x13skip_origin_binding\x18\x05 \x01(\x08\"\xd1\x01\n\x1cVerifyServerIdentityResponse\x12*\n\x05state\x18\x01 \x01(\x0e\x32\x1b.capiscio.v1.MCPServerState\x12\x13\n\x0btrust_level\x18\x02 \x01(\x05\x12\x12\n\nserver_did\x18\x03 \x01(\t\x12\x11\n\tbadge_jti\x18\x04 \x01(\t\x12\x33\n\nerror_code\x18\x05 \x01(\x0e\x32\x1f.capiscio.v1.MCPServerErrorCode\x12\x14\n\x0c\x65rror_detail\x18\x06 \x01(\t\"\x90\x01\n\x1aParseServerIdentityRequest\x12\x33\n\x0chttp_headers\x18\x01 \x01(\x0b\x32\x1b.capiscio.v1.MCPHttpHeadersH\x00\x12\x33\n\x0cjsonrpc_meta\x18\x02 \x01(\x0b\x32\x1b.capiscio.v1.MCPJsonRpcMetaH\x00\x42\x08\n\x06source\"L\n\x0eMCPHttpHeaders\x12\x1b\n\x13\x63\x61piscio_server_did\x18\x01 \x01(\t\x12\x1d\n\x15\x63\x61piscio_server_badge\x18\x02 \x01(\t\"#\n\x0eMCPJsonRpcMeta\x12\x11\n\tmeta_json\x18\x01 \x01(\t\"a\n\x1bParseServerIdentityResponse\x12\x12\n\nserver_did\x18\x01 \x01(\t\x12\x14\n\x0cserver_badge\x18\x02 \x01(\t\x12\x18\n\x10identity_present\x18\x03 \x01(\x08\"*\n\x10MCPHealthRequest\x12\x16\n\x0e\x63lient_version\x18\x01 \x01(\t\"m\n\x11MCPHealthResponse\x12\x0f\n\x07healthy\x18\x01 \x01(\x08\x12\x14\n\x0c\x63ore_version\x18\x02 \x01(\t\x12\x15\n\rproto_version\x18\x03 \x01(\t\x12\x1a\n\x12version_compatible\x18\x04 \x01(\x08*Z\n\x0bMCPDecision\x12\x1c\n\x18MCP_DECISION_UNSPECIFIED\x10\x00\x12\x16\n\x12MCP_DECISION_ALLOW\x10\x01\x12\x15\n\x11MCP_DECISION_DENY\x10\x02*\x82\x01\n\x0cMCPAuthLevel\x12\x1e\n\x1aMCP_AUTH_LEVEL_UNSPECIFIED\x10\x00\x12\x1c\n\x18MCP_AUTH_LEVEL_ANONYMOUS\x10\x01\x12\x1a\n\x16MCP_AUTH_LEVEL_API_KEY\x10\x02\x12\x18\n\x14MCP_AUTH_LEVEL_BADGE\x10\x03*\xfb\x02\n\rMCPDenyReason\x12\x1f\n\x1bMCP_DENY_REASON_UNSPECIFIED\x10\x00\x12!\n\x1dMCP_DENY_REASON_BADGE_MISSING\x10\x01\x12!\n\x1dMCP_DENY_REASON_BADGE_INVALID\x10\x02\x12!\n\x1dMCP_DENY_REASON_BADGE_EXPIRED\x10\x03\x12!\n\x1dMCP_DENY_REASON_BADGE_REVOKED\x10\x04\x12&\n\"MCP_DENY_REASON_TRUST_INSUFFICIENT\x10\x05\x12$\n MCP_DENY_REASON_TOOL_NOT_ALLOWED\x10\x06\x12$\n MCP_DENY_REASON_ISSUER_UNTRUSTED\x10\x07\x12!\n\x1dMCP_DENY_REASON_POLICY_DENIED\x10\x08\x12&\n\"MCP_DENY_REASON_SCOPE_INSUFFICIENT\x10\t*\xac\x01\n\x0eMCPServerState\x12 \n\x1cMCP_SERVER_STATE_UNSPECIFIED\x10\x00\x12\'\n#MCP_SERVER_STATE_VERIFIED_PRINCIPAL\x10\x01\x12\'\n#MCP_SERVER_STATE_DECLARED_PRINCIPAL\x10\x02\x12&\n\"MCP_SERVER_STATE_UNVERIFIED_ORIGIN\x10\x03*\xd7\x02\n\x12MCPServerErrorCode\x12\x19\n\x15MCP_SERVER_ERROR_NONE\x10\x00\x12 \n\x1cMCP_SERVER_ERROR_DID_INVALID\x10\x01\x12\"\n\x1eMCP_SERVER_ERROR_BADGE_INVALID\x10\x02\x12\"\n\x1eMCP_SERVER_ERROR_BADGE_EXPIRED\x10\x03\x12\"\n\x1eMCP_SERVER_ERROR_BADGE_REVOKED\x10\x04\x12\'\n#MCP_SERVER_ERROR_TRUST_INSUFFICIENT\x10\x05\x12$\n MCP_SERVER_ERROR_ORIGIN_MISMATCH\x10\x06\x12\"\n\x1eMCP_SERVER_ERROR_PATH_MISMATCH\x10\x07\x12%\n!MCP_SERVER_ERROR_ISSUER_UNTRUSTED\x10\x08\x32\xf6\x03\n\nMCPService\x12\x65\n\x12\x45valuateToolAccess\x12&.capiscio.v1.EvaluateToolAccessRequest\x1a\'.capiscio.v1.EvaluateToolAccessResponse\x12\x61\n\x16\x45valuatePolicyDecision\x12\".capiscio.v1.PolicyDecisionRequest\x1a#.capiscio.v1.PolicyDecisionResponse\x12k\n\x14VerifyServerIdentity\x12(.capiscio.v1.VerifyServerIdentityRequest\x1a).capiscio.v1.VerifyServerIdentityResponse\x12h\n\x13ParseServerIdentity\x12\'.capiscio.v1.ParseServerIdentityRequest\x1a(.capiscio.v1.ParseServerIdentityResponse\x12G\n\x06Health\x12\x1d.capiscio.v1.MCPHealthRequest\x1a\x1e.capiscio.v1.MCPHealthResponseB;Z9github.com/capiscio/capiscio-core/pkg/rpc/gen/capiscio/v1b\x06proto3')
+except TypeError:
+    # Descriptor already registered (e.g. gen/ copy loaded first) — reuse it.
+    DESCRIPTOR = _descriptor_pool.Default().FindFileByName('capiscio/v1/mcp.proto')
 
 _globals = globals()
 _builder.BuildMessageAndEnumDescriptors(DESCRIPTOR, _globals)
@@ -33,54 +37,54 @@ _builder.BuildTopDescriptorsAndMessages(DESCRIPTOR, 'capiscio.v1.mcp_pb2', _glob
 if not _descriptor._USE_C_DESCRIPTORS:
   _globals['DESCRIPTOR']._loaded_options = None
   _globals['DESCRIPTOR']._serialized_options = b'Z9github.com/capiscio/capiscio-core/pkg/rpc/gen/capiscio/v1'
-  _globals['_MCPDECISION']._serialized_start=3093
-  _globals['_MCPDECISION']._serialized_end=3183
-  _globals['_MCPAUTHLEVEL']._serialized_start=3186
-  _globals['_MCPAUTHLEVEL']._serialized_end=3316
-  _globals['_MCPDENYREASON']._serialized_start=3319
-  _globals['_MCPDENYREASON']._serialized_end=3658
-  _globals['_MCPSERVERSTATE']._serialized_start=3661
-  _globals['_MCPSERVERSTATE']._serialized_end=3833
-  _globals['_MCPSERVERERRORCODE']._serialized_start=3836
-  _globals['_MCPSERVERERRORCODE']._serialized_end=4179
+  _globals['_MCPDECISION']._serialized_start=3199
+  _globals['_MCPDECISION']._serialized_end=3289
+  _globals['_MCPAUTHLEVEL']._serialized_start=3292
+  _globals['_MCPAUTHLEVEL']._serialized_end=3422
+  _globals['_MCPDENYREASON']._serialized_start=3425
+  _globals['_MCPDENYREASON']._serialized_end=3804
+  _globals['_MCPSERVERSTATE']._serialized_start=3807
+  _globals['_MCPSERVERSTATE']._serialized_end=3979
+  _globals['_MCPSERVERERRORCODE']._serialized_start=3982
+  _globals['_MCPSERVERERRORCODE']._serialized_end=4325
   _globals['_EVALUATETOOLACCESSREQUEST']._serialized_start=72
   _globals['_EVALUATETOOLACCESSREQUEST']._serialized_end=518
   _globals['_EVALUATECONFIG']._serialized_start=520
   _globals['_EVALUATECONFIG']._serialized_end=636
   _globals['_EVALUATETOOLACCESSRESPONSE']._serialized_start=639
-  _globals['_EVALUATETOOLACCESSRESPONSE']._serialized_end=1106
-  _globals['_MCPOBLIGATION']._serialized_start=1108
-  _globals['_MCPOBLIGATION']._serialized_end=1158
-  _globals['_POLICYDECISIONREQUEST']._serialized_start=1161
-  _globals['_POLICYDECISIONREQUEST']._serialized_end=1388
-  _globals['_POLICYSUBJECT']._serialized_start=1390
-  _globals['_POLICYSUBJECT']._serialized_end=1490
-  _globals['_POLICYACTION']._serialized_start=1492
-  _globals['_POLICYACTION']._serialized_end=1551
-  _globals['_POLICYRESOURCE']._serialized_start=1553
-  _globals['_POLICYRESOURCE']._serialized_end=1589
-  _globals['_POLICYCONFIG']._serialized_start=1592
-  _globals['_POLICYCONFIG']._serialized_end=1744
-  _globals['_POLICYDECISIONRESPONSE']._serialized_start=1747
-  _globals['_POLICYDECISIONRESPONSE']._serialized_end=2046
-  _globals['_VERIFYSERVERIDENTITYREQUEST']._serialized_start=2049
-  _globals['_VERIFYSERVERIDENTITYREQUEST']._serialized_end=2215
-  _globals['_MCPVERIFYCONFIG']._serialized_start=2218
-  _globals['_MCPVERIFYCONFIG']._serialized_end=2363
-  _globals['_VERIFYSERVERIDENTITYRESPONSE']._serialized_start=2366
-  _globals['_VERIFYSERVERIDENTITYRESPONSE']._serialized_end=2575
-  _globals['_PARSESERVERIDENTITYREQUEST']._serialized_start=2578
-  _globals['_PARSESERVERIDENTITYREQUEST']._serialized_end=2722
-  _globals['_MCPHTTPHEADERS']._serialized_start=2724
-  _globals['_MCPHTTPHEADERS']._serialized_end=2800
-  _globals['_MCPJSONRPCMETA']._serialized_start=2802
-  _globals['_MCPJSONRPCMETA']._serialized_end=2837
-  _globals['_PARSESERVERIDENTITYRESPONSE']._serialized_start=2839
-  _globals['_PARSESERVERIDENTITYRESPONSE']._serialized_end=2936
-  _globals['_MCPHEALTHREQUEST']._serialized_start=2938
-  _globals['_MCPHEALTHREQUEST']._serialized_end=2980
-  _globals['_MCPHEALTHRESPONSE']._serialized_start=2982
-  _globals['_MCPHEALTHRESPONSE']._serialized_end=3091
-  _globals['_MCPSERVICE']._serialized_start=4182
-  _globals['_MCPSERVICE']._serialized_end=4684
+  _globals['_EVALUATETOOLACCESSRESPONSE']._serialized_end=1212
+  _globals['_MCPOBLIGATION']._serialized_start=1214
+  _globals['_MCPOBLIGATION']._serialized_end=1264
+  _globals['_POLICYDECISIONREQUEST']._serialized_start=1267
+  _globals['_POLICYDECISIONREQUEST']._serialized_end=1494
+  _globals['_POLICYSUBJECT']._serialized_start=1496
+  _globals['_POLICYSUBJECT']._serialized_end=1596
+  _globals['_POLICYACTION']._serialized_start=1598
+  _globals['_POLICYACTION']._serialized_end=1657
+  _globals['_POLICYRESOURCE']._serialized_start=1659
+  _globals['_POLICYRESOURCE']._serialized_end=1695
+  _globals['_POLICYCONFIG']._serialized_start=1698
+  _globals['_POLICYCONFIG']._serialized_end=1850
+  _globals['_POLICYDECISIONRESPONSE']._serialized_start=1853
+  _globals['_POLICYDECISIONRESPONSE']._serialized_end=2152
+  _globals['_VERIFYSERVERIDENTITYREQUEST']._serialized_start=2155
+  _globals['_VERIFYSERVERIDENTITYREQUEST']._serialized_end=2321
+  _globals['_MCPVERIFYCONFIG']._serialized_start=2324
+  _globals['_MCPVERIFYCONFIG']._serialized_end=2469
+  _globals['_VERIFYSERVERIDENTITYRESPONSE']._serialized_start=2472
+  _globals['_VERIFYSERVERIDENTITYRESPONSE']._serialized_end=2681
+  _globals['_PARSESERVERIDENTITYREQUEST']._serialized_start=2684
+  _globals['_PARSESERVERIDENTITYREQUEST']._serialized_end=2828
+  _globals['_MCPHTTPHEADERS']._serialized_start=2830
+  _globals['_MCPHTTPHEADERS']._serialized_end=2906
+  _globals['_MCPJSONRPCMETA']._serialized_start=2908
+  _globals['_MCPJSONRPCMETA']._serialized_end=2943
+  _globals['_PARSESERVERIDENTITYRESPONSE']._serialized_start=2945
+  _globals['_PARSESERVERIDENTITYRESPONSE']._serialized_end=3042
+  _globals['_MCPHEALTHREQUEST']._serialized_start=3044
+  _globals['_MCPHEALTHREQUEST']._serialized_end=3086
+  _globals['_MCPHEALTHRESPONSE']._serialized_start=3088
+  _globals['_MCPHEALTHRESPONSE']._serialized_end=3197
+  _globals['_MCPSERVICE']._serialized_start=4328
+  _globals['_MCPSERVICE']._serialized_end=4830
 # @@protoc_insertion_point(module_scope)
