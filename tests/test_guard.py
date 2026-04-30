@@ -452,3 +452,72 @@ class TestGuardErrorHandling:
             
             assert documented_tool.__name__ == "documented_tool"
             assert documented_tool.__doc__ == "This is the docstring."
+
+
+class TestScopeInsufficientDenyPath:
+    """Tests for SCOPE_INSUFFICIENT deny reason (RFC-008 §9.3)."""
+
+    @pytest.mark.asyncio
+    async def test_guard_denies_scope_insufficient(self, mock_core_client, sample_badge_jws):
+        """Tool execution denied when capability class scope is insufficient."""
+        mock_response = MagicMock()
+        mock_response.decision = 2  # DENY
+        mock_response.deny_reason = 9  # TOOL_SCOPE_INSUFFICIENT
+        mock_response.deny_detail = "Capability class mismatch"
+        mock_response.agent_did = "did:web:example.com:agents:test"
+        mock_response.badge_jti = "badge-scope-1"
+        mock_response.auth_level = 3  # BADGE
+        mock_response.trust_level = 2
+        mock_response.evidence_id = "ev-scope-1"
+        mock_response.evidence_json = "{}"
+        mock_response.error_code = "SCOPE_INSUFFICIENT"
+        mock_response.requested_capability = "storage"
+        mock_response.presented_capability = "compute"
+
+        mock_core_client.stub.EvaluateToolAccess = AsyncMock(return_value=mock_response)
+
+        with patch("capiscio_mcp._core.client.CoreClient.get_instance", return_value=mock_core_client):
+            @guard()
+            async def write_file(path: str) -> str:
+                return f"Written to {path}"
+
+            with pytest.raises(GuardError) as exc_info:
+                await write_file(path="/tmp/test.txt")
+
+            err = exc_info.value
+            assert err.reason == DenyReason.SCOPE_INSUFFICIENT
+            assert err.error_code == "SCOPE_INSUFFICIENT"
+            assert err.requested_capability == "storage"
+            assert err.presented_capability == "compute"
+
+    @pytest.mark.asyncio
+    async def test_evaluate_propagates_scope_fields(self, mock_core_client):
+        """GuardResult carries error_code/requested/presented from gRPC response."""
+        mock_response = MagicMock()
+        mock_response.decision = 2  # DENY
+        mock_response.deny_reason = 9  # TOOL_SCOPE_INSUFFICIENT
+        mock_response.deny_detail = "Scope mismatch"
+        mock_response.agent_did = "did:web:example.com:agents:test"
+        mock_response.badge_jti = "badge-scope-2"
+        mock_response.auth_level = 3
+        mock_response.trust_level = 2
+        mock_response.evidence_id = "ev-scope-2"
+        mock_response.evidence_json = "{}"
+        mock_response.error_code = "SCOPE_INSUFFICIENT"
+        mock_response.requested_capability = "network"
+        mock_response.presented_capability = "storage"
+
+        mock_core_client.stub.EvaluateToolAccess = AsyncMock(return_value=mock_response)
+
+        from capiscio_mcp.guard import evaluate_tool_access
+
+        with patch("capiscio_mcp._core.client.CoreClient.get_instance", return_value=mock_core_client):
+            result = await evaluate_tool_access(
+                tool_name="my_tool",
+                params={},
+            )
+
+        assert result.deny_reason == DenyReason.SCOPE_INSUFFICIENT
+        assert result.error_code == "SCOPE_INSUFFICIENT"
+        assert result.requested_capability == "network"
+        assert result.presented_capability == "storage"

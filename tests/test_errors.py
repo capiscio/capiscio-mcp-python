@@ -108,6 +108,31 @@ class TestGuardError:
         assert "GuardError" in repr_str
         assert "BADGE_INVALID" in repr_str
 
+    def test_scope_insufficient_fields(self):
+        error = GuardError(
+            reason=DenyReason.SCOPE_INSUFFICIENT,
+            detail="Capability class mismatch",
+            evidence_id="ev_scope_1",
+            agent_did="did:web:example.com:agents:test",
+            trust_level=2,
+            error_code="SCOPE_INSUFFICIENT",
+            requested_capability="storage",
+            presented_capability="compute",
+        )
+        assert error.reason == DenyReason.SCOPE_INSUFFICIENT
+        assert error.error_code == "SCOPE_INSUFFICIENT"
+        assert error.requested_capability == "storage"
+        assert error.presented_capability == "compute"
+
+    def test_scope_insufficient_defaults_none(self):
+        error = GuardError(
+            reason=DenyReason.POLICY_DENIED,
+            detail="Denied",
+        )
+        assert error.error_code is None
+        assert error.requested_capability is None
+        assert error.presented_capability is None
+
 
 class TestGuardConfigError:
     """Tests for GuardConfigError."""
