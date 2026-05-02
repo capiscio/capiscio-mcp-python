@@ -88,8 +88,8 @@ response = {
     "id": 1,
     "result": {...},
     "_meta": {
-        "serverDid": "did:web:mcp.example.com",
-        "serverBadge": "eyJhbGc...",
+        "capiscio_server_did": "did:web:mcp.example.com",
+        "capiscio_server_badge": "eyJhbGc...",
     }
 }
 

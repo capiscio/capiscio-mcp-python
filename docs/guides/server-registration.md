@@ -1,4 +1,3 @@
-````markdown
 # Server Identity Registration
 
 This guide covers setting up a verifiable identity for your MCP server.
@@ -237,5 +236,3 @@ except RegistrationError as e:
 - [Protect MCP Tools](server-side.md) - Add trust-level requirements
 - [Client-Side Verification](client-side.md) - Verify servers before connecting
 - [Evidence Logging](evidence.md) - Audit trail for all tool calls
-
-````

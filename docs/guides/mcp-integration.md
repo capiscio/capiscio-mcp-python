@@ -132,8 +132,8 @@ response = {
     "id": 1,
     "result": {...},
     "_meta": {
-        "serverDid": "did:web:example.com",
-        "serverBadge": "eyJhbGc...",
+        "capiscio_server_did": "did:web:example.com",
+        "capiscio_server_badge": "eyJhbGc...",
     }
 }
 
