@@ -69,10 +69,11 @@ headers = {
 
 identity = parse_http_headers(headers)
 
-if identity.has_identity:
+server_did, server_badge = identity
+if server_did:
     result = await verify_server(
-        server_did=identity.server_did,
-        server_badge=identity.server_badge,
+        server_did=server_did,
+        server_badge=server_badge,
         transport_origin="https://mcp.example.com",
     )
 ```
@@ -95,10 +96,11 @@ response = {
 
 identity = parse_jsonrpc_meta(response.get("_meta", {}))
 
-if identity.has_identity:
+server_did, server_badge = identity
+if server_did:
     result = await verify_server(
-        server_did=identity.server_did,
-        server_badge=identity.server_badge,
+        server_did=server_did,
+        server_badge=server_badge,
     )
 ```
 
