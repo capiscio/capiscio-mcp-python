@@ -112,11 +112,11 @@ Access caller information within guarded functions:
 
 ```python
 from capiscio_mcp import guard
-from capiscio_mcp.guard import get_caller_credential
+from capiscio_mcp.guard import get_credential
 
 @guard(min_trust_level=2)
 async def audit_operation(data: dict) -> dict:
-    credential = get_caller_credential()
+    credential = get_credential()
     
     if credential:
         print(f"Caller DID: {credential.agent_did}")

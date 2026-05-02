@@ -102,13 +102,13 @@ async def connect_and_verify(url: str):
         # Get server info
         info = await client.get_server_info()
         
-        # Parse identity from response headers
-        identity = parse_http_headers(client.last_response_headers)
+        # Parse identity from response headers (returns tuple)
+        server_did, server_badge = parse_http_headers(client.last_response_headers)
         
-        if identity.has_identity:
+        if server_did:
             result = await verify_server(
-                server_did=identity.server_did,
-                server_badge=identity.server_badge,
+                server_did=server_did,
+                server_badge=server_badge,
                 transport_origin=url,
             )
             
@@ -132,15 +132,15 @@ response = {
     "id": 1,
     "result": {...},
     "_meta": {
-        "serverDid": "did:web:example.com",
-        "serverBadge": "eyJhbGc...",
+        "capiscio_server_did": "did:web:example.com",
+        "capiscio_server_badge": "eyJhbGc...",
     }
 }
 
-# Client extracts and verifies
-identity = parse_jsonrpc_meta(response["_meta"])
+# Client extracts and verifies (returns tuple)
+server_did, server_badge = parse_jsonrpc_meta(response["_meta"])
 result = await verify_server(
-    server_did=identity.server_did,
-    server_badge=identity.server_badge,
+    server_did=server_did,
+    server_badge=server_badge,
 )
 ```

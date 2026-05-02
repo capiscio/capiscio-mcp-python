@@ -41,7 +41,8 @@ This section provides detailed API documentation for all public modules in capis
         - GuardConfig
         - GuardResult
         - compute_params_hash
-        - get_caller_credential
+        - get_credential
+        - set_credential
       show_root_heading: false
 
 ## Server Module (RFC-007)
