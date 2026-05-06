@@ -45,6 +45,7 @@ from cryptography.hazmat.primitives.serialization import (
 )
 
 from capiscio_mcp.keeper import ServerBadgeKeeper
+from capiscio_mcp.events import GuardEventEmitter, set_event_emitter
 from capiscio_mcp.registration import (
     RegistrationError,
     generate_server_keypair,
@@ -473,6 +474,16 @@ class MCPServerIdentity:
                 )
 
         logger.info("MCPServerIdentity ready for server %s: %s", server_id, did)
+
+        # Step 6: Auto-configure guard event emitter
+        set_event_emitter(
+            GuardEventEmitter(
+                server_url=server_url,
+                api_key=api_key,
+                agent_id=server_id,
+            )
+        )
+
         return cls(
             server_id=server_id,
             did=did,  # type: ignore[arg-type]

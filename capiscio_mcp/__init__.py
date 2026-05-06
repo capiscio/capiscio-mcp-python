@@ -120,6 +120,11 @@ from capiscio_mcp.registration import (
 )
 from capiscio_mcp.keeper import ServerBadgeKeeper
 from capiscio_mcp.connect import MCPServerIdentity
+from capiscio_mcp.events import (
+    GuardEventEmitter,
+    get_event_emitter,
+    set_event_emitter,
+)
 from capiscio_mcp._core.version import (
     MCP_VERSION,
     CORE_MIN_VERSION,
@@ -182,4 +187,8 @@ __all__ = [
     # One-liner identity setup (MCPServerIdentity.connect())
     "MCPServerIdentity",
     "ServerBadgeKeeper",
+    # Event emission (RFC-008)
+    "GuardEventEmitter",
+    "get_event_emitter",
+    "set_event_emitter",
 ]
