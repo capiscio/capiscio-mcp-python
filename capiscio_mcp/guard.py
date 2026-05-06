@@ -57,6 +57,7 @@ from capiscio_mcp.types import (
     TrustLevel,
 )
 from capiscio_mcp.errors import GuardError, GuardConfigError
+from capiscio_mcp.events import get_event_emitter
 
 logger = logging.getLogger(__name__)
 
@@ -355,6 +356,38 @@ async def evaluate_tool_access(
     )
 
 
+def _emit_deny_event(
+    result: "GuardResult",
+    tool_name: str,
+    capability_class: Optional[str] = None,
+) -> None:
+    """Best-effort emit a ``capiscio.policy_enforced`` event on DENY.
+
+    Uses the module-level :func:`get_event_emitter` singleton.  If no emitter
+    is configured the call is a no-op.
+    """
+    emitter = get_event_emitter()
+    if emitter is None:
+        return
+    try:
+        emitter.emit_policy_enforced(
+            decision="DENY",
+            tool_name=tool_name,
+            deny_reason=result.deny_reason.value if result.deny_reason else None,
+            deny_detail=result.deny_detail,
+            agent_did=result.agent_did,
+            trust_level=result.trust_level,
+            evidence_id=result.evidence_id,
+            error_code=result.error_code,
+            requested_capability=result.requested_capability,
+            presented_capability=result.presented_capability,
+            capability_class=capability_class,
+            severity="HIGH",
+        )
+    except Exception:
+        logger.debug("Failed to emit deny event", exc_info=True)
+
+
 # Decorator overloads for type hints
 @overload
 def guard(
@@ -473,6 +506,7 @@ def guard(
                     result.presented_capability,
                     result.evidence_id,
                 )
+                _emit_deny_event(result, effective_tool_name, capability_class)
                 raise GuardError(
                     reason=result.deny_reason or DenyReason.INTERNAL_ERROR,
                     detail=result.deny_detail or "Access denied",
@@ -584,6 +618,7 @@ def guard_sync(
                     result.presented_capability,
                     result.evidence_id,
                 )
+                _emit_deny_event(result, effective_tool_name, capability_class)
                 raise GuardError(
                     reason=result.deny_reason or DenyReason.INTERNAL_ERROR,
                     detail=result.deny_detail or "Access denied",
