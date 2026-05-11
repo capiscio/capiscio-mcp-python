@@ -234,6 +234,7 @@ class MCPServerIdentity:
     keys_dir: Path
     badge: Optional[str] = None
     private_key_pem: Optional[str] = None
+    org_id: Optional[str] = None
     _keeper: Any = field(default=None, repr=False)
 
     def get_badge(self) -> Optional[str]:
@@ -268,7 +269,7 @@ class MCPServerIdentity:
     async def connect(
         cls,
         server_id: str,
-        api_key: str,
+        api_key: Optional[str] = None,
         *,
         server_url: str = DEFAULT_REGISTRY,
         domain: Optional[str] = None,
@@ -292,6 +293,7 @@ class MCPServerIdentity:
         Args:
             server_id: MCP server UUID (from the CapiscIO dashboard).
             api_key: Registry API key (``X-Capiscio-Registry-Key``).
+                Falls back to ``CAPISCIO_API_KEY`` env var if not provided.
             server_url: Registry base URL (default: production).
             domain: Domain to record in the badge (e.g. ``"tools.example.com"``).
                 Defaults to the hostname extracted from ``server_url``.
@@ -317,6 +319,13 @@ class MCPServerIdentity:
             server = CapiscioMCPServer(identity=identity)
         """
         server_url = server_url.rstrip("/")
+
+        # Resolve api_key: argument > env var
+        effective_api_key = api_key or os.environ.get("CAPISCIO_API_KEY")
+        if not effective_api_key:
+            raise ValueError(
+                "api_key argument or CAPISCIO_API_KEY environment variable is required."
+            )
 
         # Step 1: Resolve keys directory
         effective_keys_dir = Path(keys_dir) if keys_dir else (DEFAULT_MCP_KEYS_DIR / server_id)
@@ -408,18 +417,39 @@ class MCPServerIdentity:
                 )
                 server_id = resolved
 
+        # Try loading cached org_id (avoids network call if keys already exist)
+        org_id: Optional[str] = None
+        org_id_file = effective_keys_dir / "org_id.txt"
+        if org_id_file.exists():
+            try:
+                org_id = org_id_file.read_text().strip() or None
+            except (OSError, UnicodeDecodeError):
+                org_id = None
+
         try:
             reg_result = await register_server_identity(
                 server_id=server_id,
-                api_key=api_key,
+                api_key=effective_api_key,
                 did=did,
                 public_key=effective_pub_pem,
                 ca_url=server_url,
             )
             logger.info("Server identity registered: %s", did)
+
+            # Extract org_id from registration response
+            reg_data = reg_result.get("data") if isinstance(reg_result, dict) else None
+            if isinstance(reg_data, dict):
+                resp_org_id = reg_data.get("orgId")
+                if resp_org_id:
+                    org_id = resp_org_id
+                    try:
+                        org_id_file.write_text(org_id)
+                    except OSError as exc:
+                        logger.warning("Could not persist org_id: %s", exc)
+
             # If server was auto-created, persist the new ID for subsequent runs
-            if reg_result.get("created") and reg_result.get("data"):
-                new_id = reg_result["data"].get("id")
+            if isinstance(reg_data, dict) and reg_result.get("created"):
+                new_id = reg_data.get("id")
                 if new_id and str(new_id) != server_id:
                     logger.info(
                         "Server auto-created with new ID %s (was %s)",
@@ -452,12 +482,20 @@ class MCPServerIdentity:
         if is_new_identity:
             _log_key_capture_hint(server_id, private_key_pem)
 
+        # Configure policy enforcement for Go core.
+        # Must be set BEFORE the first @guard call triggers CoreClient.get_instance()
+        # which spawns the Go binary (inherits parent env).
+        if org_id:
+            os.environ["CAPISCIO_BUNDLE_URL"] = f"{server_url}/v1/bundles/{org_id}"
+        if not os.environ.get("CAPISCIO_API_KEY"):
+            os.environ["CAPISCIO_API_KEY"] = effective_api_key
+
         # Step 5: Issue initial badge and start keeper
         badge: Optional[str] = None
         keeper: Optional[ServerBadgeKeeper] = None
 
         if auto_badge:
-            badge = await _issue_badge(server_id, api_key, server_url, domain=domain)
+            badge = await _issue_badge(server_id, effective_api_key, server_url, domain=domain)
             if badge:
                 keeper = ServerBadgeKeeper(
                     server_id=server_id,
@@ -479,7 +517,7 @@ class MCPServerIdentity:
         set_event_emitter(
             GuardEventEmitter(
                 server_url=server_url,
-                api_key=api_key,
+                api_key=effective_api_key,
                 agent_id=server_id,
             )
         )
@@ -487,11 +525,12 @@ class MCPServerIdentity:
         return cls(
             server_id=server_id,
             did=did,  # type: ignore[arg-type]
-            api_key=api_key,
+            api_key=effective_api_key,
             server_url=server_url,
             keys_dir=effective_keys_dir,
             badge=badge,
             private_key_pem=private_key_pem,
+            org_id=org_id,
             _keeper=keeper,
         )
 
@@ -501,7 +540,7 @@ class MCPServerIdentity:
 
         Reads:
         - ``CAPISCIO_SERVER_ID`` (required)
-        - ``CAPISCIO_API_KEY`` (required)
+        - ``CAPISCIO_API_KEY`` (required — via env or ``api_key`` kwarg)
         - ``CAPISCIO_SERVER_URL`` (optional, default: production)
         - ``CAPISCIO_SERVER_DOMAIN`` (optional, default: hostname from SERVER_URL)
         - ``CAPISCIO_SERVER_PRIVATE_KEY_PEM`` (optional — PEM-encoded Ed25519
@@ -510,7 +549,8 @@ class MCPServerIdentity:
         Additional keyword arguments are forwarded to :meth:`connect`.
 
         Raises:
-            ValueError: If ``CAPISCIO_SERVER_ID`` or ``CAPISCIO_API_KEY`` is unset.
+            ValueError: If ``CAPISCIO_SERVER_ID`` is unset, or if no API key
+                is available via env or kwarg.
 
         Example::
 
@@ -557,11 +597,7 @@ class MCPServerIdentity:
             kwargs["keys_dir"] = str(auto_keys_dir)
 
         api_key = os.environ.get("CAPISCIO_API_KEY")
-        if not api_key:
-            raise ValueError(
-                "CAPISCIO_API_KEY environment variable is required. "
-                "Get your API key at https://app.capisc.io"
-            )
+        # api_key may be None here — connect() will validate
 
         server_url = os.environ.get("CAPISCIO_SERVER_URL", DEFAULT_REGISTRY)
         domain = os.environ.get("CAPISCIO_SERVER_DOMAIN")
