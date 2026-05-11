@@ -88,6 +88,8 @@ from capiscio_mcp.guard import (
     GuardResult,
     compute_params_hash,
     evaluate_tool_access,
+    set_pip_config,
+    get_pip_config,
 )
 from capiscio_mcp.server import (
     verify_server,
@@ -125,6 +127,11 @@ from capiscio_mcp.events import (
     get_event_emitter,
     set_event_emitter,
 )
+from capiscio_mcp.pip import (
+    PIPConfig,
+    PolicyClient,
+    PolicyResult,
+)
 from capiscio_mcp._core.version import (
     MCP_VERSION,
     CORE_MIN_VERSION,
@@ -158,6 +165,12 @@ __all__ = [
     "GuardResult",
     "compute_params_hash",
     "evaluate_tool_access",
+    "set_pip_config",
+    "get_pip_config",
+    # Policy (RFC-005)
+    "PIPConfig",
+    "PolicyClient",
+    "PolicyResult",
     # Server (RFC-007)
     "verify_server",
     "verify_server_sync",
