@@ -59,7 +59,7 @@ class GuardEventEmitter:
         api_key: Registry API key for ``X-Capiscio-Registry-Key`` header.
         agent_id: Agent UUID for ``agentId`` in the ``/v1/events`` payload.
             The registry requires a valid agent ID at the top level.
-        server_id: MCP server UUID for ``serverId`` in the ``/v1/events``
+        server_id: MCP server UUID for ``mcpServerId`` in the ``/v1/events``
             payload.  When set, the dashboard can attribute events to the
             MCP server's invocation counter.
         enabled: Set ``False`` to suppress emission (useful in tests).

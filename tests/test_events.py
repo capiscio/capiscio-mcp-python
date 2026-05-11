@@ -1,7 +1,5 @@
 """Tests for capiscio_mcp.events module (guard event emission)."""
 
-import threading
-import uuid
 from unittest.mock import MagicMock, patch
 
 import pytest
