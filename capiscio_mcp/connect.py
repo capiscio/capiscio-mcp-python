@@ -540,10 +540,10 @@ class MCPServerIdentity:
         )
 
         # Step 7: Auto-configure PDP for org-policy enforcement
-        # Default: derive from server_url (zero-config). Override via env var or param.
+        # Precedence: explicit param > env var > derived from server_url (zero-config).
         effective_pdp = (
-            os.environ.get("CAPISCIO_PDP_ENDPOINT")
-            or pdp_endpoint
+            pdp_endpoint
+            or os.environ.get("CAPISCIO_PDP_ENDPOINT")
             or f"{server_url}/v1/pdp/evaluate"
         )
         set_pip_config(
