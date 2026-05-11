@@ -46,6 +46,8 @@ from cryptography.hazmat.primitives.serialization import (
 
 from capiscio_mcp.keeper import ServerBadgeKeeper
 from capiscio_mcp.events import GuardEventEmitter, set_event_emitter
+from capiscio_mcp.guard import set_pip_config
+from capiscio_mcp.pip import PIPConfig
 from capiscio_mcp.registration import (
     RegistrationError,
     generate_server_keypair,
@@ -278,6 +280,7 @@ class MCPServerIdentity:
         auto_badge: bool = True,
         renewal_threshold: int = 30,
         on_badge_renew: Optional[Callable[[str], None]] = None,
+        pdp_endpoint: Optional[str] = None,
     ) -> "MCPServerIdentity":
         """Connect to CapiscIO and get a fully-configured MCP server identity.
 
@@ -303,6 +306,9 @@ class MCPServerIdentity:
             auto_badge: If ``True``, issue an initial badge and start auto-renewal.
             renewal_threshold: Renew badge this many seconds before expiry.
             on_badge_renew: Optional callback ``(badge: str) -> None`` on renewal.
+            pdp_endpoint: Override PDP URL for org-policy enforcement.  Defaults
+                to ``{server_url}/v1/pdp/evaluate`` (zero-config).  Can also be
+                overridden via ``CAPISCIO_PDP_ENDPOINT`` env var.
 
         Returns:
             :class:`MCPServerIdentity` with ``.did``, ``.badge``, ``.keys_dir``,
@@ -529,9 +535,25 @@ class MCPServerIdentity:
             GuardEventEmitter(
                 server_url=server_url,
                 api_key=effective_api_key,
-                agent_id=server_id,
+                server_id=server_id,
             )
         )
+
+        # Step 7: Auto-configure PDP for org-policy enforcement
+        # Precedence: explicit param > env var > derived from server_url (zero-config).
+        effective_pdp = (
+            pdp_endpoint
+            or os.environ.get("CAPISCIO_PDP_ENDPOINT")
+            or f"{server_url}/v1/pdp/evaluate"
+        )
+        set_pip_config(
+            PIPConfig(
+                pdp_endpoint=effective_pdp,
+                pep_id=f"mcp-server:{server_id}",
+                workspace=server_id,
+            )
+        )
+        logger.info("Org-policy enforcement enabled: pdp_endpoint=%s", effective_pdp)
 
         return cls(
             server_id=server_id,
@@ -554,6 +576,7 @@ class MCPServerIdentity:
         - ``CAPISCIO_API_KEY`` (required)
         - ``CAPISCIO_SERVER_URL`` (optional, default: production)
         - ``CAPISCIO_SERVER_DOMAIN`` (optional, default: hostname from SERVER_URL)
+        - ``CAPISCIO_PDP_ENDPOINT`` (optional — PDP URL for org-policy enforcement)
         - ``CAPISCIO_SERVER_PRIVATE_KEY_PEM`` (optional — PEM-encoded Ed25519
           private key for ephemeral environments; printed on first generation)
 

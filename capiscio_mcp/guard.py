@@ -58,6 +58,7 @@ from capiscio_mcp.types import (
 )
 from capiscio_mcp.errors import GuardError, GuardConfigError
 from capiscio_mcp.events import get_event_emitter
+from capiscio_mcp.pip import PIPConfig, PolicyClient
 
 logger = logging.getLogger(__name__)
 
@@ -84,6 +85,31 @@ _caller_badge: contextvars.ContextVar[Optional[str]] = (
     contextvars.ContextVar("caller_badge", default=None)
 )
 
+# Module-level PIP config singleton (set by MCPServerIdentity.connect() or manually)
+_pip_config: Optional[PIPConfig] = None
+
+
+def set_pip_config(config: Optional[PIPConfig]) -> None:
+    """Set the module-level PIP configuration for org policy evaluation.
+
+    When set, ``@guard`` performs a second-phase policy check via
+    ``EvaluatePolicyDecision`` after the inline trust-level check.  The
+    stricter decision wins.
+
+    Typically auto-configured by ``MCPServerIdentity.connect()``.
+
+    Args:
+        config: PIP configuration with ``pdp_endpoint`` set, or ``None``
+            to disable org-policy checks.
+    """
+    global _pip_config
+    _pip_config = config
+
+
+def get_pip_config() -> Optional[PIPConfig]:
+    """Return the current module-level PIP configuration, or ``None``."""
+    return _pip_config
+
 
 @dataclass
 class GuardConfig:
@@ -104,6 +130,7 @@ class GuardConfig:
     allowed_tools: Optional[List[str]] = None
     policy_version: Optional[str] = None
     require_badge: bool = False
+    pip_config: Optional[PIPConfig] = None
     
     def __post_init__(self) -> None:
         """Validate configuration on creation."""
@@ -315,6 +342,22 @@ async def evaluate_tool_access(
     # Make RPC call
     response = await client.stub.EvaluateToolAccess(request)
     
+    # Phase 2: Org policy check via PDP (if configured)
+    # The inline check (trust level, allowed tools) runs first.
+    # If that passes, the PDP gets a say — the stricter decision wins.
+    pip_cfg = (effective_config.pip_config or _pip_config)
+    if (
+        pip_cfg is not None
+        and pip_cfg.pdp_endpoint
+        and response.decision == mcp_pb2.ALLOW
+    ):
+        response = await _evaluate_org_policy(
+            pip_cfg=pip_cfg,
+            inline_response=response,
+            tool_name=tool_name,
+            capability_class=capability_class,
+        )
+    
     # Map response to GuardResult
     decision = Decision.ALLOW if response.decision == mcp_pb2.ALLOW else Decision.DENY
     
@@ -356,6 +399,74 @@ async def evaluate_tool_access(
     )
 
 
+async def _evaluate_org_policy(
+    *,
+    pip_cfg: PIPConfig,
+    inline_response: Any,
+    tool_name: str,
+    capability_class: Optional[str] = None,
+) -> Any:
+    """Second-phase org-policy check via EvaluatePolicyDecision RPC.
+
+    Called only when the inline evaluation (phase 1) returned ALLOW and a PDP
+    endpoint is configured.  If the PDP says DENY, we override the inline
+    response so that the stricter decision wins.
+
+    If the PDP is unreachable we respect the enforcement mode configured in
+    ``pip_cfg`` (default EM-OBSERVE = allow through with a warning).
+
+    Returns:
+        The original ``inline_response`` (possibly mutated to DENY).
+    """
+    from capiscio_mcp._proto.capiscio.v1 import mcp_pb2
+
+    try:
+        policy_client = PolicyClient(pip_cfg)
+        policy_result = await policy_client.evaluate(
+            subject_did=inline_response.agent_did or "",
+            badge_jti=inline_response.badge_jti or "",
+            trust_level=str(inline_response.trust_level),
+            operation=tool_name,
+            capability_class=capability_class or "",
+        )
+
+        if policy_result.denied:
+            logger.info(
+                "Org policy DENY override: tool=%s agent=%s reason=%s decision_id=%s",
+                tool_name,
+                inline_response.agent_did,
+                policy_result.reason,
+                policy_result.decision_id,
+            )
+            # Mutate the inline response so downstream mapping picks it up
+            inline_response.decision = mcp_pb2.DENY
+            inline_response.deny_reason = mcp_pb2.TOOL_POLICY_DENIED
+            inline_response.deny_detail = (
+                policy_result.reason or "Denied by organization policy"
+            )
+        elif policy_result.pdp_error:
+            logger.warning(
+                "PDP unavailable during org-policy check: error_code=%s tool=%s",
+                policy_result.error_code,
+                tool_name,
+            )
+            # The Go core already applied the enforcement-mode fallback.
+            # EM-OBSERVE → ALLOW_OBSERVE (pass through).
+            # EM-GUARD/EM-STRICT → DENY (fail-closed).
+            if policy_result.decision == "DENY":
+                inline_response.decision = mcp_pb2.DENY
+                inline_response.deny_reason = mcp_pb2.TOOL_POLICY_DENIED
+                inline_response.deny_detail = "Policy service unavailable"
+    except Exception:
+        logger.warning(
+            "Org policy evaluation failed for tool=%s — allowing through (best-effort)",
+            tool_name,
+            exc_info=True,
+        )
+
+    return inline_response
+
+
 def _emit_deny_event(
     result: "GuardResult",
     tool_name: str,
@@ -386,6 +497,32 @@ def _emit_deny_event(
         )
     except Exception:
         logger.debug("Failed to emit deny event", exc_info=True)
+
+
+def _emit_allow_event(
+    result: "GuardResult",
+    tool_name: str,
+    capability_class: Optional[str] = None,
+) -> None:
+    """Best-effort emit a ``capiscio.policy_enforced`` event on ALLOW.
+
+    Uses the module-level :func:`get_event_emitter` singleton.  If no emitter
+    is configured the call is a no-op.
+    """
+    emitter = get_event_emitter()
+    if emitter is None:
+        return
+    try:
+        emitter.emit_policy_enforced(
+            decision="ALLOW",
+            tool_name=tool_name,
+            agent_did=result.agent_did,
+            trust_level=result.trust_level,
+            evidence_id=result.evidence_id,
+            capability_class=capability_class,
+        )
+    except Exception:
+        logger.debug("Failed to emit allow event", exc_info=True)
 
 
 # Decorator overloads for type hints
@@ -523,6 +660,7 @@ def guard(
                 f"Access allowed for {effective_tool_name}: "
                 f"agent={result.agent_did}, trust_level={result.trust_level}"
             )
+            _emit_allow_event(result, effective_tool_name, capability_class)
             
             # Execute tool
             return await f(*args, **kwargs)
@@ -629,6 +767,8 @@ def guard_sync(
                     requested_capability=result.requested_capability,
                     presented_capability=result.presented_capability,
                 )
+            
+            _emit_allow_event(result, effective_tool_name, capability_class)
             
             # Execute tool
             return f(*args, **kwargs)
