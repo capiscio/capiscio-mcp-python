@@ -21,7 +21,7 @@ class TestCheckVersionCompatibility:
         mock_stub = MagicMock()
         mock_response = MagicMock()
         mock_response.healthy = True
-        mock_response.core_version = "2.5.0"
+        mock_response.core_version = "2.7.0"
         mock_response.proto_version = "1.0"
         mock_response.version_compatible = True
         
@@ -53,7 +53,7 @@ class TestCheckVersionCompatibility:
         mock_stub = MagicMock()
         mock_response = MagicMock()
         mock_response.healthy = True
-        mock_response.core_version = "2.5.0"
+        mock_response.core_version = "2.7.0"
         mock_response.version_compatible = True
         
         mock_stub.Health = AsyncMock(return_value=mock_response)
@@ -219,7 +219,7 @@ class TestHealthCheckIntegration:
         # Health response with version info
         mock_response = MagicMock()
         mock_response.healthy = True
-        mock_response.core_version = "2.5.0"
+        mock_response.core_version = "2.7.0"
         mock_response.proto_version = "1.0"
         mock_response.version_compatible = True
         
@@ -246,7 +246,7 @@ class TestHealthCheckIntegration:
             response = MagicMock()
             # Simulate slow startup - healthy after 5 calls
             response.healthy = call_count >= 5
-            response.core_version = "2.5.0"
+            response.core_version = "2.7.0"
             response.version_compatible = True
             return response
         
