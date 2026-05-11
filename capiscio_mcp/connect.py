@@ -225,6 +225,7 @@ class MCPServerIdentity:
         keys_dir: Directory containing the server's keys.
         badge: Current trust badge JWS (auto-renewed in background when keeper is running).
         private_key_pem: PEM-encoded Ed25519 private key for PoP signing.
+        org_id: Organization UUID from the registry (used for policy bundle URL).
     """
 
     server_id: str
@@ -335,6 +336,24 @@ class MCPServerIdentity:
         pub_key_path = effective_keys_dir / "public_key.pem"
         did_file = effective_keys_dir / "did.txt"
 
+        # ------------------------------------------------------------------
+        # Step 1.5: Pre-set policy env vars BEFORE any code path that may
+        # start the Go core subprocess (generate_server_keypair calls
+        # CoreClient.get_instance). The subprocess inherits the parent env,
+        # so these must be in os.environ before it spawns.
+        # ------------------------------------------------------------------
+        os.environ["CAPISCIO_API_KEY"] = effective_api_key
+
+        org_id_file = effective_keys_dir / "org_id.txt"
+        cached_org_id: Optional[str] = None
+        if org_id_file.exists():
+            try:
+                cached_org_id = org_id_file.read_text().strip() or None
+            except (OSError, UnicodeDecodeError):
+                cached_org_id = None
+        if cached_org_id:
+            os.environ["CAPISCIO_BUNDLE_URL"] = f"{server_url}/v1/bundles/{cached_org_id}"
+
         did: Optional[str] = None
         private_key_pem: Optional[str] = None
         pub_pem: Optional[str] = None
@@ -417,14 +436,8 @@ class MCPServerIdentity:
                 )
                 server_id = resolved
 
-        # Try loading cached org_id (avoids network call if keys already exist)
-        org_id: Optional[str] = None
-        org_id_file = effective_keys_dir / "org_id.txt"
-        if org_id_file.exists():
-            try:
-                org_id = org_id_file.read_text().strip() or None
-            except (OSError, UnicodeDecodeError):
-                org_id = None
+        # org_id was pre-loaded from cache in Step 1.5; use it as fallback
+        org_id: Optional[str] = cached_org_id
 
         try:
             reg_result = await register_server_identity(
@@ -482,13 +495,11 @@ class MCPServerIdentity:
         if is_new_identity:
             _log_key_capture_hint(server_id, private_key_pem)
 
-        # Configure policy enforcement for Go core.
-        # Must be set BEFORE the first @guard call triggers CoreClient.get_instance()
-        # which spawns the Go binary (inherits parent env).
-        if org_id:
+        # Update bundle URL if registration yielded a new/different org_id.
+        # (API key and cached bundle URL were already set in Step 1.5 before
+        # the Go core could be started.)
+        if org_id and org_id != cached_org_id:
             os.environ["CAPISCIO_BUNDLE_URL"] = f"{server_url}/v1/bundles/{org_id}"
-        if not os.environ.get("CAPISCIO_API_KEY"):
-            os.environ["CAPISCIO_API_KEY"] = effective_api_key
 
         # Step 5: Issue initial badge and start keeper
         badge: Optional[str] = None
@@ -540,17 +551,19 @@ class MCPServerIdentity:
 
         Reads:
         - ``CAPISCIO_SERVER_ID`` (required)
-        - ``CAPISCIO_API_KEY`` (required — via env or ``api_key`` kwarg)
+        - ``CAPISCIO_API_KEY`` (required)
         - ``CAPISCIO_SERVER_URL`` (optional, default: production)
         - ``CAPISCIO_SERVER_DOMAIN`` (optional, default: hostname from SERVER_URL)
         - ``CAPISCIO_SERVER_PRIVATE_KEY_PEM`` (optional — PEM-encoded Ed25519
           private key for ephemeral environments; printed on first generation)
 
         Additional keyword arguments are forwarded to :meth:`connect`.
+        Note: ``api_key`` is always read from ``CAPISCIO_API_KEY``; do not
+        pass it as a keyword argument.
 
         Raises:
             ValueError: If ``CAPISCIO_SERVER_ID`` is unset, or if no API key
-                is available via env or kwarg.
+                is available via env.
 
         Example::
 
