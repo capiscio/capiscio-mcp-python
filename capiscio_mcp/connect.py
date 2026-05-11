@@ -529,7 +529,7 @@ class MCPServerIdentity:
             GuardEventEmitter(
                 server_url=server_url,
                 api_key=effective_api_key,
-                agent_id=server_id,
+                server_id=server_id,
             )
         )
 

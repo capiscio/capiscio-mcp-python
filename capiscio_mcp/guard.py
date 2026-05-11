@@ -388,6 +388,32 @@ def _emit_deny_event(
         logger.debug("Failed to emit deny event", exc_info=True)
 
 
+def _emit_allow_event(
+    result: "GuardResult",
+    tool_name: str,
+    capability_class: Optional[str] = None,
+) -> None:
+    """Best-effort emit a ``capiscio.policy_enforced`` event on ALLOW.
+
+    Uses the module-level :func:`get_event_emitter` singleton.  If no emitter
+    is configured the call is a no-op.
+    """
+    emitter = get_event_emitter()
+    if emitter is None:
+        return
+    try:
+        emitter.emit_policy_enforced(
+            decision="ALLOW",
+            tool_name=tool_name,
+            agent_did=result.agent_did,
+            trust_level=result.trust_level,
+            evidence_id=result.evidence_id,
+            capability_class=capability_class,
+        )
+    except Exception:
+        logger.debug("Failed to emit allow event", exc_info=True)
+
+
 # Decorator overloads for type hints
 @overload
 def guard(
@@ -523,6 +549,7 @@ def guard(
                 f"Access allowed for {effective_tool_name}: "
                 f"agent={result.agent_did}, trust_level={result.trust_level}"
             )
+            _emit_allow_event(result, effective_tool_name, capability_class)
             
             # Execute tool
             return await f(*args, **kwargs)
@@ -629,6 +656,8 @@ def guard_sync(
                     requested_capability=result.requested_capability,
                     presented_capability=result.presented_capability,
                 )
+            
+            _emit_allow_event(result, effective_tool_name, capability_class)
             
             # Execute tool
             return f(*args, **kwargs)
