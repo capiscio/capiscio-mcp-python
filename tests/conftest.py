@@ -8,6 +8,15 @@ from unittest.mock import AsyncMock, MagicMock, patch
 # Note: With pytest-asyncio in auto mode, no event_loop fixture needed
 
 
+@pytest.fixture(autouse=True)
+def _clear_decision_cache():
+    """Clear the guard decision cache before each test to prevent cross-test pollution."""
+    from capiscio_mcp.guard import _decision_cache
+    _decision_cache.clear()
+    yield
+    _decision_cache.clear()
+
+
 @pytest.fixture
 def mock_core_client():
     """Mock CoreClient for unit tests."""

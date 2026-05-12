@@ -517,7 +517,7 @@ class MCPServerIdentity:
                 effective_domain = domain or _derive_domain(server_url)
                 keeper = ServerBadgeKeeper(
                     server_id=server_id,
-                    api_key=api_key,
+                    api_key=effective_api_key,
                     initial_badge=badge,
                     ca_url=server_url,
                     renewal_threshold=renewal_threshold,

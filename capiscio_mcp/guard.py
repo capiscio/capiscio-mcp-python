@@ -34,6 +34,7 @@ import contextvars
 import hashlib
 import json
 import logging
+import threading
 import time
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
@@ -123,27 +124,42 @@ def get_pip_config() -> Optional[PIPConfig]:
 # In practice this eliminates the gRPC round-trip for repeated tool
 # calls within a burst: first call ~3 ms, subsequent calls ~0.01 ms.
 _DECISION_CACHE_TTL = 5.0  # seconds
+_DECISION_CACHE_MAX_SIZE = 256  # max entries before eviction
 _decision_cache: Dict[Tuple[str, str], Tuple["GuardResult", float]] = {}
+_decision_cache_lock = threading.Lock()
 
 
 def _cache_get(badge_jws: str, tool_name: str) -> Optional["GuardResult"]:
     """Return cached decision if still valid, else None."""
-    entry = _decision_cache.get((badge_jws, tool_name))
-    if entry is None:
-        return None
-    result, expiry = entry
-    if time.monotonic() > expiry:
-        del _decision_cache[(badge_jws, tool_name)]
-        return None
-    return result
+    with _decision_cache_lock:
+        entry = _decision_cache.get((badge_jws, tool_name))
+        if entry is None:
+            return None
+        result, expiry = entry
+        if time.monotonic() > expiry:
+            del _decision_cache[(badge_jws, tool_name)]
+            return None
+        return result
 
 
 def _cache_put(badge_jws: str, tool_name: str, result: "GuardResult") -> None:
     """Store a decision in the cache."""
-    _decision_cache[(badge_jws, tool_name)] = (
-        result,
-        time.monotonic() + _DECISION_CACHE_TTL,
-    )
+    with _decision_cache_lock:
+        # Evict expired entries if cache is at capacity
+        if len(_decision_cache) >= _DECISION_CACHE_MAX_SIZE:
+            now = time.monotonic()
+            expired = [k for k, (_, exp) in _decision_cache.items() if now > exp]
+            for k in expired:
+                del _decision_cache[k]
+            # If still at capacity after expiry sweep, evict oldest entries
+            if len(_decision_cache) >= _DECISION_CACHE_MAX_SIZE:
+                oldest = sorted(_decision_cache, key=lambda k: _decision_cache[k][1])
+                for k in oldest[:len(_decision_cache) - _DECISION_CACHE_MAX_SIZE + 1]:
+                    del _decision_cache[k]
+        _decision_cache[(badge_jws, tool_name)] = (
+            result,
+            time.monotonic() + _DECISION_CACHE_TTL,
+        )
 
 
 @dataclass

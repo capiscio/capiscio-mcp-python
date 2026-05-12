@@ -105,7 +105,7 @@ CMD ["python", "server.py"]
 ```python
 from capiscio_mcp.integrations.mcp import CapiscioMCPServer
 
-async def main():
+def main():
     # Reads CAPISCIO_SERVER_ID, CAPISCIO_API_KEY, and
     # CAPISCIO_SERVER_PRIVATE_KEY_PEM from environment
     server = CapiscioMCPServer.connect()
@@ -125,7 +125,7 @@ async def main():
 import json
 from capiscio_mcp.integrations.mcp import CapiscioMCPServer
 
-async def handler(event, context):
+def handler(event, context):
     # Key injected via Lambda environment variables or Secrets Manager
     server = CapiscioMCPServer.connect()
 
