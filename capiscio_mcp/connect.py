@@ -306,9 +306,10 @@ class MCPServerIdentity:
             auto_badge: If ``True``, issue an initial badge and start auto-renewal.
             renewal_threshold: Renew badge this many seconds before expiry.
             on_badge_renew: Optional callback ``(badge: str) -> None`` on renewal.
-            pdp_endpoint: Override PDP URL for org-policy enforcement.  Defaults
-                to ``{server_url}/v1/pdp/evaluate`` (zero-config).  Can also be
-                overridden via ``CAPISCIO_PDP_ENDPOINT`` env var.
+            pdp_endpoint: Optional remote PDP URL for org-policy enforcement.
+                Defaults to empty (local OPA bundle evaluation via Go core).
+                Use ``CAPISCIO_PDP_ENDPOINT`` env var or this param only when
+                a remote PDP service is explicitly deployed.
 
         Returns:
             :class:`MCPServerIdentity` with ``.did``, ``.badge``, ``.keys_dir``,
@@ -359,6 +360,12 @@ class MCPServerIdentity:
                 cached_org_id = None
         if cached_org_id:
             os.environ["CAPISCIO_BUNDLE_URL"] = f"{server_url}/v1/bundles/{cached_org_id}"
+
+        # Default enforcement mode to EM-GUARD when a bundle URL is configured.
+        # EM-OBSERVE (the Go core default) is shadow-mode: logs DENY but allows
+        # through, which silently breaks policy enforcement for callers.
+        if os.environ.get("CAPISCIO_BUNDLE_URL") and not os.environ.get("CAPISCIO_ENFORCEMENT_MODE"):
+            os.environ["CAPISCIO_ENFORCEMENT_MODE"] = "EM-GUARD"
 
         did: Optional[str] = None
         private_key_pem: Optional[str] = None
@@ -506,6 +513,8 @@ class MCPServerIdentity:
         # the Go core could be started.)
         if org_id and org_id != cached_org_id:
             os.environ["CAPISCIO_BUNDLE_URL"] = f"{server_url}/v1/bundles/{org_id}"
+            if not os.environ.get("CAPISCIO_ENFORCEMENT_MODE"):
+                os.environ["CAPISCIO_ENFORCEMENT_MODE"] = "EM-GUARD"
 
         # Step 5: Issue initial badge and start keeper
         badge: Optional[str] = None
@@ -540,11 +549,13 @@ class MCPServerIdentity:
         )
 
         # Step 7: Auto-configure PDP for org-policy enforcement
-        # Precedence: explicit param > env var > derived from server_url (zero-config).
+        # Policy evaluation is LOCAL: the Go core fetches the OPA bundle via
+        # CAPISCIO_BUNDLE_URL and evaluates it with its embedded OPA engine.
+        # pdp_endpoint is only needed if a remote PDP is explicitly configured.
         effective_pdp = (
             pdp_endpoint
             or os.environ.get("CAPISCIO_PDP_ENDPOINT")
-            or f"{server_url}/v1/pdp/evaluate"
+            or ""
         )
         set_pip_config(
             PIPConfig(
@@ -553,7 +564,10 @@ class MCPServerIdentity:
                 workspace=server_id,
             )
         )
-        logger.info("Org-policy enforcement enabled: pdp_endpoint=%s", effective_pdp)
+        if effective_pdp:
+            logger.info("Remote PDP configured: pdp_endpoint=%s", effective_pdp)
+        else:
+            logger.debug("Using local OPA bundle for policy evaluation")
 
         return cls(
             server_id=server_id,
