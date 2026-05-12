@@ -306,9 +306,10 @@ class MCPServerIdentity:
             auto_badge: If ``True``, issue an initial badge and start auto-renewal.
             renewal_threshold: Renew badge this many seconds before expiry.
             on_badge_renew: Optional callback ``(badge: str) -> None`` on renewal.
-            pdp_endpoint: Override PDP URL for org-policy enforcement.  Defaults
-                to ``{server_url}/v1/pdp/evaluate`` (zero-config).  Can also be
-                overridden via ``CAPISCIO_PDP_ENDPOINT`` env var.
+            pdp_endpoint: Optional remote PDP URL for org-policy enforcement.
+                Defaults to empty (local OPA bundle evaluation via Go core).
+                Use ``CAPISCIO_PDP_ENDPOINT`` env var or this param only when
+                a remote PDP service is explicitly deployed.
 
         Returns:
             :class:`MCPServerIdentity` with ``.did``, ``.badge``, ``.keys_dir``,
@@ -540,11 +541,13 @@ class MCPServerIdentity:
         )
 
         # Step 7: Auto-configure PDP for org-policy enforcement
-        # Precedence: explicit param > env var > derived from server_url (zero-config).
+        # Policy evaluation is LOCAL: the Go core fetches the OPA bundle via
+        # CAPISCIO_BUNDLE_URL and evaluates it with its embedded OPA engine.
+        # pdp_endpoint is only needed if a remote PDP is explicitly configured.
         effective_pdp = (
             pdp_endpoint
             or os.environ.get("CAPISCIO_PDP_ENDPOINT")
-            or f"{server_url}/v1/pdp/evaluate"
+            or ""
         )
         set_pip_config(
             PIPConfig(
@@ -553,7 +556,10 @@ class MCPServerIdentity:
                 workspace=server_id,
             )
         )
-        logger.info("Org-policy enforcement enabled: pdp_endpoint=%s", effective_pdp)
+        if effective_pdp:
+            logger.info("Remote PDP configured: pdp_endpoint=%s", effective_pdp)
+        else:
+            logger.debug("Using local OPA bundle for policy evaluation")
 
         return cls(
             server_id=server_id,
