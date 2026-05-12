@@ -350,6 +350,12 @@ class MCPServerIdentity:
         # ------------------------------------------------------------------
         os.environ["CAPISCIO_API_KEY"] = effective_api_key
 
+        # Forward SERVER_URL so the Go binary can build its JWKS URL for
+        # badge verification.  Without this, BadgeVerifier is nil and all
+        # badge checks fail with ErrBadgeInvalid.  (See issue #28)
+        if "CAPISCIO_REGISTRY_ENDPOINT" not in os.environ:
+            os.environ["CAPISCIO_REGISTRY_ENDPOINT"] = server_url
+
         org_id_file = effective_keys_dir / "org_id.txt"
         cached_org_id: Optional[str] = None
         if org_id_file.exists():
