@@ -88,6 +88,7 @@ class ServerBadgeKeeper:
         renewal_threshold: int = DEFAULT_RENEWAL_THRESHOLD,
         check_interval: int = DEFAULT_CHECK_INTERVAL,
         on_renew: Optional[Callable[[str], None]] = None,
+        domain: Optional[str] = None,
     ) -> None:
         """Initialize ServerBadgeKeeper.
 
@@ -99,6 +100,8 @@ class ServerBadgeKeeper:
             renewal_threshold: Renew when ``exp - now <= renewal_threshold`` seconds.
             check_interval: How often (seconds) the background thread wakes to check.
             on_renew: Optional callback called with the new badge string after each renewal.
+            domain: Domain for badge issuance (e.g. ``"tools.example.com"``).
+                Required by the registry if the server has no default domain.
         """
         self.server_id = server_id
         self.api_key = api_key
@@ -106,6 +109,7 @@ class ServerBadgeKeeper:
         self.renewal_threshold = renewal_threshold
         self.check_interval = check_interval
         self.on_renew = on_renew
+        self.domain = domain
 
         self._current_badge: Optional[str] = initial_badge
         self._badge_lock = threading.Lock()
@@ -221,8 +225,11 @@ class ServerBadgeKeeper:
             "X-Capiscio-Registry-Key": self.api_key,
             "Content-Type": "application/json",
         }
+        body: dict = {}
+        if self.domain:
+            body["domain"] = self.domain
         try:
-            resp = requests.post(url, headers=headers, json={}, timeout=30)
+            resp = requests.post(url, headers=headers, json=body, timeout=30)
             if resp.status_code in (200, 201):
                 try:
                     data = resp.json()
@@ -230,8 +237,10 @@ class ServerBadgeKeeper:
                     logger.warning("Badge renewal response was not valid JSON: %s", exc)
                     return
                 # Try multiple common response shapes
+                inner = data.get("data") or {}
                 new_badge = (
-                    (data.get("data") or {}).get("badge")
+                    inner.get("badge")
+                    or inner.get("token")
                     or data.get("badge")
                     or data.get("token")
                 )

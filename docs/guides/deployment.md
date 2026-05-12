@@ -60,7 +60,7 @@ The SDK resolves the server identity in this order:
 
 ## Environment Variables Reference
 
-All variables used by `MCPServerIdentity.connect()` and `MCPServerIdentity.from_env()`:
+All variables used by `CapiscioMCPServer.connect()`:
 
 | Variable | Required | Description |
 |----------|----------|-------------|
@@ -103,19 +103,12 @@ CMD ["python", "server.py"]
 ### Server Code
 
 ```python
-from capiscio_mcp import MCPServerIdentity
 from capiscio_mcp.integrations.mcp import CapiscioMCPServer
 
 async def main():
     # Reads CAPISCIO_SERVER_ID, CAPISCIO_API_KEY, and
     # CAPISCIO_SERVER_PRIVATE_KEY_PEM from environment
-    identity = await MCPServerIdentity.from_env()
-
-    server = CapiscioMCPServer(
-        name="my-server",
-        did=identity.did,
-        badge=identity.badge,
-    )
+    server = CapiscioMCPServer.connect()
 
     @server.tool(min_trust_level=2)
     async def my_tool(param: str) -> str:
@@ -130,17 +123,17 @@ async def main():
 
 ```python
 import json
-from capiscio_mcp import MCPServerIdentity
+from capiscio_mcp.integrations.mcp import CapiscioMCPServer
 
 async def handler(event, context):
     # Key injected via Lambda environment variables or Secrets Manager
-    identity = await MCPServerIdentity.from_env()
+    server = CapiscioMCPServer.connect()
 
     return {
         "statusCode": 200,
         "body": json.dumps({
-            "server_did": identity.did,
-            "badge_valid": identity.badge is not None,
+            "server_did": server.did,
+            "badge_valid": server.badge is not None,
         }),
     }
 ```

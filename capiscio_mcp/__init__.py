@@ -10,7 +10,7 @@ This package provides:
 - Server identity registration for MCP servers
 - PoP (Proof of Possession) handshake for server key verification
 - Evidence logging for audit and forensics
-- One-line server identity setup via MCPServerIdentity.connect()
+- One-line server identity setup via CapiscioMCPServer.connect()
 
 Installation:
     pip install capiscio-mcp          # Standalone
@@ -18,14 +18,9 @@ Installation:
     pip install capiscio-mcp[crypto]  # With PoP signing/verification
 
 Quickstart ("Let's Encrypt" style — recommended):
-    from capiscio_mcp import MCPServerIdentity
     from capiscio_mcp.integrations.mcp import CapiscioMCPServer
 
-    identity = await MCPServerIdentity.connect(
-        server_id=os.environ["CAPISCIO_SERVER_ID"],
-        api_key=os.environ["CAPISCIO_API_KEY"],
-    )
-    server = CapiscioMCPServer(identity=identity)
+    server = CapiscioMCPServer.connect()
 
     @server.tool(min_trust_level=2)
     async def read_file(path: str) -> str:
@@ -60,6 +55,13 @@ Quickstart (Server Registration, manual):
     )
     print(f"Server DID: {result['did']}")
 """
+
+import os as _os
+
+# Suppress gRPC C-core stderr noise (ev_poll_posix.cc, fork_posix.cc, etc.)
+# before any gRPC import.  Library users should not see low-level C-core logs.
+_os.environ.setdefault("GRPC_VERBOSITY", "NONE")
+_os.environ.setdefault("GRPC_TRACE", "")
 
 from capiscio_mcp.types import (
     Decision,

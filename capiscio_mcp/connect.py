@@ -514,6 +514,7 @@ class MCPServerIdentity:
         if auto_badge:
             badge = await _issue_badge(server_id, effective_api_key, server_url, domain=domain)
             if badge:
+                effective_domain = domain or _derive_domain(server_url)
                 keeper = ServerBadgeKeeper(
                     server_id=server_id,
                     api_key=api_key,
@@ -521,6 +522,7 @@ class MCPServerIdentity:
                     ca_url=server_url,
                     renewal_threshold=renewal_threshold,
                     on_renew=on_badge_renew,
+                    domain=effective_domain,
                 )
                 keeper.start()
             else:
@@ -645,3 +647,41 @@ class MCPServerIdentity:
             domain=domain or None,
             **kwargs,
         )
+
+    # ------------------------------------------------------------------
+    # Sync convenience methods
+    # ------------------------------------------------------------------
+
+    @classmethod
+    def connect_sync(
+        cls,
+        server_id: str,
+        api_key: Optional[str] = None,
+        **kwargs: Any,
+    ) -> "MCPServerIdentity":
+        """Synchronous version of :meth:`connect`.
+
+        Accepts the same arguments. Runs ``connect()`` in a fresh event loop
+        so callers don't need ``asyncio.run()`` boilerplate.
+
+        Example::
+
+            identity = MCPServerIdentity.connect_sync(
+                server_id=os.environ["CAPISCIO_SERVER_ID"],
+                api_key=os.environ["CAPISCIO_API_KEY"],
+            )
+        """
+        return asyncio.run(cls.connect(server_id, api_key, **kwargs))
+
+    @classmethod
+    def from_env_sync(cls, **kwargs: Any) -> "MCPServerIdentity":
+        """Synchronous version of :meth:`from_env`.
+
+        Reads the same environment variables. Runs ``from_env()`` in a fresh
+        event loop so callers don't need ``asyncio.run()`` boilerplate.
+
+        Example::
+
+            identity = MCPServerIdentity.from_env_sync()
+        """
+        return asyncio.run(cls.from_env(**kwargs))

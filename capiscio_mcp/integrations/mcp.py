@@ -11,14 +11,8 @@ Provides two integration classes:
 Usage (Server)::
 
     from capiscio_mcp.integrations.mcp import CapiscioMCPServer
-    from capiscio_mcp import MCPServerIdentity
 
-    identity = await MCPServerIdentity.connect(
-        server_id=os.environ["CAPISCIO_SERVER_ID"],
-        api_key=os.environ["CAPISCIO_API_KEY"],
-    )
-
-    server = CapiscioMCPServer(identity=identity)
+    server = CapiscioMCPServer.connect()
 
     @server.tool(min_trust_level=2)
     async def read_file(path: str) -> str:
@@ -297,15 +291,9 @@ class CapiscioMCPServer:
 
     Example::
 
-        from capiscio_mcp import MCPServerIdentity
         from capiscio_mcp.integrations.mcp import CapiscioMCPServer
 
-        identity = await MCPServerIdentity.connect(
-            server_id=os.environ["CAPISCIO_SERVER_ID"],
-            api_key=os.environ["CAPISCIO_API_KEY"],
-        )
-
-        server = CapiscioMCPServer(identity=identity)
+        server = CapiscioMCPServer.connect()
 
         @server.tool(min_trust_level=2)
         async def read_file(path: str) -> str:
@@ -314,14 +302,15 @@ class CapiscioMCPServer:
 
         server.run()
 
-    You can also supply credentials directly (without ``MCPServerIdentity``)::
+    You can also supply an identity or credentials directly::
 
-        server = CapiscioMCPServer(
-            name="filesystem",
-            did="did:web:mcp.example.com:servers:filesystem",
-            badge=os.environ.get("SERVER_BADGE"),
-            private_key_path="/path/to/server.key.pem",
+        from capiscio_mcp import MCPServerIdentity
+
+        identity = await MCPServerIdentity.connect(
+            server_id=os.environ["CAPISCIO_SERVER_ID"],
+            api_key=os.environ["CAPISCIO_API_KEY"],
         )
+        server = CapiscioMCPServer(identity=identity)
     """
 
     def __init__(
@@ -397,6 +386,36 @@ class CapiscioMCPServer:
             # Install handler wrapper that extracts caller credentials from _meta
             # for stdio transport (where HTTP headers are not available).
             _install_credential_extraction(self._server)
+
+    # ------------------------------------------------------------------
+    # Factory classmethods
+    # ------------------------------------------------------------------
+
+    @classmethod
+    def connect(cls, **kwargs: Any) -> "CapiscioMCPServer":
+        """Connect to the CapiscIO registry and return a ready-to-use server.
+
+        Combines ``MCPServerIdentity.from_env_sync()`` and server construction
+        into a single call — the MCP server equivalent of ``CapiscIO.connect()``
+        from the agent SDK.
+
+        Any extra keyword arguments are forwarded to the constructor
+        (e.g. ``default_min_trust_level``, ``name``).
+
+        Example::
+
+            server = CapiscioMCPServer.connect()
+
+            @server.tool(min_trust_level=1)
+            async def place_order(sku: str, quantity: int) -> str:
+                ...
+
+            server.run()
+        """
+        from capiscio_mcp.connect import MCPServerIdentity
+
+        identity = MCPServerIdentity.from_env_sync()
+        return cls(identity=identity, **kwargs)
 
     # ------------------------------------------------------------------
     # Private helpers
@@ -561,6 +580,12 @@ class CapiscioMCPServer:
             self._server.run(transport=transport)
         finally:
             _capiscio_meta_ctx.reset(token)
+            # Flush pending telemetry events before the process exits
+            from capiscio_mcp.events import get_event_emitter
+
+            emitter = get_event_emitter()
+            if emitter is not None:
+                emitter.flush(timeout=5.0)
 
     def run_stdio(self) -> None:
         """Run over stdio transport (deprecated — use :meth:`run` instead)."""
@@ -938,6 +963,21 @@ class CapiscioMCPClient:
             self._verify_result is not None
             and self._verify_result.state == ServerState.VERIFIED_PRINCIPAL
         )
+
+    # ------------------------------------------------------------------
+    # Credential management
+    # ------------------------------------------------------------------
+
+    def set_badge(self, badge: Optional[str]) -> None:
+        """Update the client badge for subsequent tool calls.
+
+        Useful for demos or test harnesses that reuse a single server
+        connection but need to impersonate different agents.
+
+        Args:
+            badge: New badge JWS string, or ``None`` to clear.
+        """
+        self._credential.badge_jws = badge
 
     # ------------------------------------------------------------------
     # Tool calls
