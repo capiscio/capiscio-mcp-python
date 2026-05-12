@@ -1,12 +1,12 @@
-# CapiscIO MCP Guard
+# MCP Guard
 
-Tool-level security for Model Context Protocol servers.
+Tool-level trust enforcement for Model Context Protocol servers.
 
 [![PyPI version](https://badge.fury.io/py/capiscio-mcp.svg)](https://badge.fury.io/py/capiscio-mcp)
 [![Python 3.10+](https://img.shields.io/badge/python-3.10+-blue.svg)](https://www.python.org/downloads/)
 [![License](https://img.shields.io/badge/License-Apache%202.0-blue.svg)](https://opensource.org/licenses/Apache-2.0)
 
-**MCP Guard** provides trust badges and identity verification for [Model Context Protocol (MCP)](https://modelcontextprotocol.io) tool calls. It implements:
+**MCP Guard** (`pip install capiscio-mcp`) provides trust badges and identity verification for [Model Context Protocol (MCP)](https://modelcontextprotocol.io) tool calls. It implements:
 
 - **RFC-006**: MCP Tool Authority and Evidence
 - **RFC-007**: MCP Server Identity Disclosure and Verification
@@ -40,6 +40,12 @@ MCP Guard solves this with:
 | **Server identity** | Verify MCP servers before connecting |
 | **Server registration** | Generate keypairs and register server DIDs |
 | **Trust levels** | 0 (self-signed) → 4 (extended validation) |
+
+## Quickstarts
+
+> **Building an MCP server?** Start with [Quickstart 1](#quickstart-1-server-side-tool-guarding).
+> **Connecting to MCP servers?** Start with [Quickstart 2](#quickstart-2-client-side-server-verification).
+> **Registering a server identity?** Start with [Quickstart 3](#quickstart-3-server-registration).
 
 ## Quickstart 1: Server-Side (Tool Guarding)
 
@@ -160,16 +166,14 @@ server = CapiscioMCPServer(
 )
 
 @server.tool(min_trust_level=2)
-async def read_file(path: str) -> str:
-    """Only agents with Trust Level 2+ can read files."""
-    with open(path) as f:
-        return f.read()
+async def execute_query(sql: str) -> list[dict]:
+    """Only agents with Trust Level 2+ can query the database."""
+    return await db.fetch_all(sql)
 
 @server.tool(min_trust_level=0)
-async def list_files(directory: str) -> list[str]:
-    """Any authenticated agent can list files."""
-    import os
-    return os.listdir(directory)
+async def list_tables() -> list[str]:
+    """Any authenticated agent can list available tables."""
+    return await db.get_table_names()
 
 # Run the server (stdio transport)
 server.run()
@@ -457,6 +461,16 @@ mypy capiscio_mcp
 # Linting
 ruff check capiscio_mcp
 ```
+
+## Related Packages
+
+| Package | What it does | Install |
+|---------|-------------|---------|
+| [Agent Guard](https://github.com/capiscio/capiscio-sdk-python) | Runtime trust verification for A2A agents | `pip install capiscio-sdk` |
+| [CapiscIO CLI](https://github.com/capiscio/capiscio-python) | Agent validation for CI/CD pipelines | `pip install capiscio` |
+| [capiscio-core](https://github.com/capiscio/capiscio-core) | Go library, CLI binary, and gateway | `go install` |
+
+[Documentation](https://docs.capisc.io) · [Website](https://capisc.io) · [Platform](https://app.capisc.io)
 
 ## License
 
