@@ -400,7 +400,7 @@ class TestMCPServerIdentityConnect:
                 keys_dir=tmp_keys_dir,
             )
 
-        assert os.environ.get("CAPISCIO_REGISTRY_ENDPOINT") == "http://localhost:8080"
+            assert os.environ.get("CAPISCIO_REGISTRY_ENDPOINT") == "http://localhost:8080"
 
     async def test_connect_does_not_overwrite_explicit_registry_endpoint(self, tmp_keys_dir):
         """connect() should NOT overwrite an explicitly set CAPISCIO_REGISTRY_ENDPOINT."""
@@ -430,8 +430,8 @@ class TestMCPServerIdentityConnect:
                 keys_dir=tmp_keys_dir,
             )
 
-        # Should retain the explicit value, not overwrite with server_url
-        assert os.environ.get("CAPISCIO_REGISTRY_ENDPOINT") == explicit_endpoint
+            # Should retain the explicit value, not overwrite with server_url
+            assert os.environ.get("CAPISCIO_REGISTRY_ENDPOINT") == explicit_endpoint
 
 
 # ---------------------------------------------------------------------------

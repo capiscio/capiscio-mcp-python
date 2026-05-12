@@ -356,6 +356,15 @@ class MCPServerIdentity:
         # badge checks fail with ErrBadgeInvalid.  (See issue #28)
         if "CAPISCIO_REGISTRY_ENDPOINT" not in os.environ:
             os.environ["CAPISCIO_REGISTRY_ENDPOINT"] = server_url
+        elif os.environ["CAPISCIO_REGISTRY_ENDPOINT"] != server_url:
+            logger.warning(
+                "CAPISCIO_REGISTRY_ENDPOINT (%s) differs from server_url (%s) "
+                "— Go core will verify badges against the registry endpoint, "
+                "not the server URL. Set CAPISCIO_REGISTRY_ENDPOINT explicitly "
+                "only if you need a separate JWKS source.",
+                os.environ["CAPISCIO_REGISTRY_ENDPOINT"],
+                server_url,
+            )
 
         org_id_file = effective_keys_dir / "org_id.txt"
         cached_org_id: Optional[str] = None
