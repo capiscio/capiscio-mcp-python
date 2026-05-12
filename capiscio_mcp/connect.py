@@ -361,6 +361,12 @@ class MCPServerIdentity:
         if cached_org_id:
             os.environ["CAPISCIO_BUNDLE_URL"] = f"{server_url}/v1/bundles/{cached_org_id}"
 
+        # Default enforcement mode to EM-GUARD when a bundle URL is configured.
+        # EM-OBSERVE (the Go core default) is shadow-mode: logs DENY but allows
+        # through, which silently breaks policy enforcement for callers.
+        if os.environ.get("CAPISCIO_BUNDLE_URL") and not os.environ.get("CAPISCIO_ENFORCEMENT_MODE"):
+            os.environ["CAPISCIO_ENFORCEMENT_MODE"] = "EM-GUARD"
+
         did: Optional[str] = None
         private_key_pem: Optional[str] = None
         pub_pem: Optional[str] = None
@@ -507,6 +513,8 @@ class MCPServerIdentity:
         # the Go core could be started.)
         if org_id and org_id != cached_org_id:
             os.environ["CAPISCIO_BUNDLE_URL"] = f"{server_url}/v1/bundles/{org_id}"
+            if not os.environ.get("CAPISCIO_ENFORCEMENT_MODE"):
+                os.environ["CAPISCIO_ENFORCEMENT_MODE"] = "EM-GUARD"
 
         # Step 5: Issue initial badge and start keeper
         badge: Optional[str] = None
