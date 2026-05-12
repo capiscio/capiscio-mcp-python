@@ -15,6 +15,9 @@ from capiscio_mcp.guard import (
     GuardResult,
     _caller_did,
     _caller_badge,
+    _cache_get,
+    _cache_put,
+    _decision_cache,
 )
 from capiscio_mcp.types import Decision, AuthLevel, DenyReason
 from capiscio_mcp.errors import GuardError, GuardConfigError
@@ -521,3 +524,62 @@ class TestScopeInsufficientDenyPath:
         assert result.error_code == "SCOPE_INSUFFICIENT"
         assert result.requested_capability == "network"
         assert result.presented_capability == "storage"
+
+
+class TestDecisionCache:
+    """Tests for the guard decision cache."""
+
+    def test_cache_put_and_get(self):
+        """Stored decision is retrievable."""
+        result = GuardResult(
+            decision=Decision.ALLOW,
+            agent_did="did:web:example.com:agents:test",
+            badge_jti="jti-1",
+            auth_level=AuthLevel.BADGE,
+            trust_level=2,
+        )
+        _cache_put("badge-jws-1", "tool_a", result)
+        cached = _cache_get("badge-jws-1", "tool_a")
+        assert cached is not None
+        assert cached.decision == Decision.ALLOW
+
+    def test_cache_miss_returns_none(self):
+        """Missing key returns None."""
+        assert _cache_get("nonexistent-badge", "nonexistent-tool") is None
+
+    def test_cache_expired_entry_returns_none(self):
+        """Expired entries are evicted and return None."""
+        import time
+        result = GuardResult(
+            decision=Decision.ALLOW,
+            agent_did="did:web:example.com:agents:test",
+            badge_jti="jti-2",
+            auth_level=AuthLevel.BADGE,
+            trust_level=1,
+        )
+        # Manually insert an already-expired entry
+        _decision_cache[("expired-badge", "tool_b")] = (result, time.monotonic() - 1)
+        assert _cache_get("expired-badge", "tool_b") is None
+        assert ("expired-badge", "tool_b") not in _decision_cache
+
+    def test_cache_different_keys_are_independent(self):
+        """Different badge/tool combinations don't collide."""
+        allow = GuardResult(
+            decision=Decision.ALLOW,
+            agent_did="did:web:a",
+            badge_jti="j1",
+            auth_level=AuthLevel.BADGE,
+            trust_level=2,
+        )
+        deny = GuardResult(
+            decision=Decision.DENY,
+            agent_did="did:web:b",
+            badge_jti="j2",
+            auth_level=AuthLevel.ANONYMOUS,
+            trust_level=0,
+            deny_reason=DenyReason.BADGE_MISSING,
+        )
+        _cache_put("badge-a", "tool_x", allow)
+        _cache_put("badge-b", "tool_x", deny)
+        assert _cache_get("badge-a", "tool_x").decision == Decision.ALLOW
+        assert _cache_get("badge-b", "tool_x").decision == Decision.DENY
