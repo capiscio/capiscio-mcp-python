@@ -371,6 +371,68 @@ class TestMCPServerIdentityConnect:
 
         mock_hint.assert_not_called()
 
+    async def test_connect_auto_forwards_registry_endpoint(self, tmp_keys_dir):
+        """connect() should set CAPISCIO_REGISTRY_ENDPOINT from server_url when absent."""
+        fake_keys = {
+            "did_key": FAKE_DID,
+            "public_key_pem": FAKE_PUB_KEY_PEM,
+            "private_key_pem": FAKE_PRIV_KEY_PEM,
+            "key_id": "key-1",
+        }
+
+        # Ensure CAPISCIO_REGISTRY_ENDPOINT is NOT in the environment
+        env = {k: v for k, v in os.environ.items() if k != "CAPISCIO_REGISTRY_ENDPOINT"}
+        with (
+            patch.dict(os.environ, env, clear=True),
+            patch("capiscio_mcp.connect.generate_server_keypair", new_callable=AsyncMock, return_value=fake_keys),
+            patch("capiscio_mcp.connect.register_server_identity", new_callable=AsyncMock),
+            patch("capiscio_mcp.connect._issue_badge", new_callable=AsyncMock, return_value=FAKE_BADGE),
+            patch("capiscio_mcp.connect.ServerBadgeKeeper") as MockKeeper,
+        ):
+            mock_keeper = MagicMock(spec=ServerBadgeKeeper)
+            mock_keeper.get_current_badge.return_value = FAKE_BADGE
+            MockKeeper.return_value = mock_keeper
+
+            await MCPServerIdentity.connect(
+                server_id=SERVER_ID,
+                api_key=API_KEY,
+                server_url="http://localhost:8080",
+                keys_dir=tmp_keys_dir,
+            )
+
+            assert os.environ.get("CAPISCIO_REGISTRY_ENDPOINT") == "http://localhost:8080"
+
+    async def test_connect_does_not_overwrite_explicit_registry_endpoint(self, tmp_keys_dir):
+        """connect() should NOT overwrite an explicitly set CAPISCIO_REGISTRY_ENDPOINT."""
+        fake_keys = {
+            "did_key": FAKE_DID,
+            "public_key_pem": FAKE_PUB_KEY_PEM,
+            "private_key_pem": FAKE_PRIV_KEY_PEM,
+            "key_id": "key-1",
+        }
+
+        explicit_endpoint = "https://custom-jwks.example.com"
+        with (
+            patch.dict(os.environ, {"CAPISCIO_REGISTRY_ENDPOINT": explicit_endpoint}),
+            patch("capiscio_mcp.connect.generate_server_keypair", new_callable=AsyncMock, return_value=fake_keys),
+            patch("capiscio_mcp.connect.register_server_identity", new_callable=AsyncMock),
+            patch("capiscio_mcp.connect._issue_badge", new_callable=AsyncMock, return_value=FAKE_BADGE),
+            patch("capiscio_mcp.connect.ServerBadgeKeeper") as MockKeeper,
+        ):
+            mock_keeper = MagicMock(spec=ServerBadgeKeeper)
+            mock_keeper.get_current_badge.return_value = FAKE_BADGE
+            MockKeeper.return_value = mock_keeper
+
+            await MCPServerIdentity.connect(
+                server_id=SERVER_ID,
+                api_key=API_KEY,
+                server_url="http://localhost:8080",
+                keys_dir=tmp_keys_dir,
+            )
+
+            # Should retain the explicit value, not overwrite with server_url
+            assert os.environ.get("CAPISCIO_REGISTRY_ENDPOINT") == explicit_endpoint
+
 
 # ---------------------------------------------------------------------------
 # MCPServerIdentity.from_env()
