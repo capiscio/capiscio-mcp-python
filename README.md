@@ -159,20 +159,23 @@ Create an MCP server with built-in trust enforcement:
 ```python
 from capiscio_mcp.integrations.mcp import CapiscioMCPServer
 
+# db is your application's database connection (asyncpg, databases, etc.)
+db = ...  # e.g. databases.Database("postgresql://...")
+
 server = CapiscioMCPServer(
-    name="filesystem",
-    did="did:web:mcp.example.com:servers:filesystem",
+    name="data-api",
+    did="did:web:mcp.example.com:servers:data-api",
     badge="eyJhbGc...",  # From CapiscIO registry
 )
 
 @server.tool(min_trust_level=2)
-async def execute_query(sql: str) -> list[dict]:
-    """Only agents with Trust Level 2+ can query the database."""
-    return await db.fetch_all(sql)
+async def get_user(user_id: int) -> dict:
+    """Only agents with Trust Level 2+ can read user data."""
+    return await db.fetch_one("SELECT * FROM users WHERE id = $1", user_id)
 
-@server.tool(min_trust_level=0)
+@server.tool(min_trust_level=1)
 async def list_tables() -> list[str]:
-    """Any authenticated agent can list available tables."""
+    """Agents with a valid badge (Trust Level 1+) can list tables."""
     return await db.get_table_names()
 
 # Run the server (stdio transport)
@@ -468,7 +471,7 @@ ruff check capiscio_mcp
 |---------|-------------|---------|
 | [Agent Guard](https://github.com/capiscio/capiscio-sdk-python) | Runtime trust verification for A2A agents | `pip install capiscio-sdk` |
 | [CapiscIO CLI](https://github.com/capiscio/capiscio-python) | Agent validation for CI/CD pipelines | `pip install capiscio` |
-| [capiscio-core](https://github.com/capiscio/capiscio-core) | Go library, CLI binary, and gateway | `go install` |
+| [capiscio-core](https://github.com/capiscio/capiscio-core) | Go library, CLI binary, and gateway | [Install guide](https://github.com/capiscio/capiscio-core#install) |
 
 [Documentation](https://docs.capisc.io) · [Website](https://capisc.io) · [Platform](https://app.capisc.io)
 
