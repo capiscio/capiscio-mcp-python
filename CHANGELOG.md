@@ -7,6 +7,24 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [2.7.0] - 2026-05-13
+
+### Added
+- **`CapiscioMCPServer.connect()` one-liner** with decision cache and keeper domain (#32)
+- **RFC-008 Capability Classes**: ALLOW path support and SCOPE_INSUFFICIENT structured rejection (#19, #20)
+- **Policy enforcement events**: emit policy_enforced events on guard deny (#22)
+- **Policy enforcement env vars** wired into `connect()` (#26)
+- **ALLOW event emission** aligned with server db.Event struct (#25)
+
+### Fixed
+- Auto-forward `CAPISCIO_SERVER_URL` → `CAPISCIO_REGISTRY_ENDPOINT` (#29)
+- Remove bogus `/v1/pdp/evaluate` default from PDP config (#30)
+- GA checksum verification hardening (#16)
+- Replace deprecated `asyncio.get_event_loop()` (#15)
+- Auto-create MCP server on 404 with `CAPISCIO_SERVER_ID=auto` (#14)
+- Move grpcio-tools to dev deps (#17)
+- MCP hardening: badge validation, input limits, PEM safety (#18)
+
 ## [2.6.0] - 2026-03-27
 
 ### Added
