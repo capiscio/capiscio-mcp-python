@@ -18,6 +18,7 @@ from capiscio_mcp.guard import (
     _cache_get,
     _cache_put,
     _decision_cache,
+    _DECISION_CACHE_MAX_SIZE,
 )
 from capiscio_mcp.types import Decision, AuthLevel, DenyReason
 from capiscio_mcp.errors import GuardError, GuardConfigError
@@ -583,3 +584,48 @@ class TestDecisionCache:
         _cache_put("badge-b", "tool_x", deny)
         assert _cache_get("badge-a", "tool_x").decision == Decision.ALLOW
         assert _cache_get("badge-b", "tool_x").decision == Decision.DENY
+
+    def test_cache_evicts_at_capacity(self):
+        """When cache hits max size, oldest entries are evicted."""
+        result = GuardResult(
+            decision=Decision.ALLOW,
+            agent_did="did:web:example.com:agents:test",
+            badge_jti="jti-cap",
+            auth_level=AuthLevel.BADGE,
+            trust_level=1,
+        )
+        # Fill cache to capacity
+        for i in range(_DECISION_CACHE_MAX_SIZE):
+            _cache_put(f"badge-fill-{i}", "tool_cap", result)
+        assert len(_decision_cache) == _DECISION_CACHE_MAX_SIZE
+        # Insert one more — should evict oldest
+        _cache_put("badge-fill-new", "tool_cap", result)
+        assert len(_decision_cache) == _DECISION_CACHE_MAX_SIZE
+        # Newest entry is present
+        assert _cache_get("badge-fill-new", "tool_cap") is not None
+        # Oldest (badge-fill-0) should have been evicted
+        assert _cache_get("badge-fill-0", "tool_cap") is None
+
+    def test_cache_evicts_expired_before_oldest(self):
+        """Expired entries are swept before evicting by age."""
+        import time
+        result = GuardResult(
+            decision=Decision.ALLOW,
+            agent_did="did:web:example.com:agents:test",
+            badge_jti="jti-exp",
+            auth_level=AuthLevel.BADGE,
+            trust_level=1,
+        )
+        # Insert one already-expired entry
+        _decision_cache[("badge-expired-sweep", "tool_exp")] = (
+            result,
+            time.monotonic() - 1,
+        )
+        # Fill remaining slots
+        for i in range(_DECISION_CACHE_MAX_SIZE - 1):
+            _cache_put(f"badge-sweep-{i}", "tool_exp", result)
+        assert len(_decision_cache) == _DECISION_CACHE_MAX_SIZE
+        # Insert one more — expired entry should be swept, no valid entry lost
+        _cache_put("badge-sweep-new", "tool_exp", result)
+        assert _cache_get("badge-sweep-new", "tool_exp") is not None
+        assert ("badge-expired-sweep", "tool_exp") not in _decision_cache
