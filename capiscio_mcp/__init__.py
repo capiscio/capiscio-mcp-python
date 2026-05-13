@@ -90,8 +90,6 @@ from capiscio_mcp.guard import (
     GuardResult,
     compute_params_hash,
     evaluate_tool_access,
-    set_pip_config,
-    get_pip_config,
 )
 from capiscio_mcp.server import (
     verify_server,
@@ -167,8 +165,6 @@ __all__ = [
     "GuardResult",
     "compute_params_hash",
     "evaluate_tool_access",
-    "set_pip_config",
-    "get_pip_config",
     # Policy (RFC-005)
     "PIPConfig",
     "PolicyClient",
