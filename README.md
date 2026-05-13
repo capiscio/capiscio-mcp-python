@@ -162,11 +162,7 @@ from capiscio_mcp.integrations.mcp import CapiscioMCPServer
 # db is your application's database connection (asyncpg, databases, etc.)
 db = ...  # e.g. databases.Database("postgresql://...")
 
-server = CapiscioMCPServer(
-    name="data-api",
-    did="did:web:mcp.example.com:servers:data-api",
-    badge="eyJhbGc...",  # From CapiscIO registry
-)
+server = CapiscioMCPServer.connect()
 
 @server.tool(min_trust_level=2)
 async def get_user(user_id: int) -> dict:
@@ -204,26 +200,23 @@ async with CapiscioMCPClient(
     print(result)
 ```
 
-## MCPServerIdentity.connect() — "Let's Encrypt" Style Setup
+## CapiscioMCPServer.connect() — “Let's Encrypt” Style Setup
 
 Register your MCP server and get a badge with a single call:
 
 ```python
-from capiscio_mcp import MCPServerIdentity
+from capiscio_mcp.integrations.mcp import CapiscioMCPServer
 
-identity = await MCPServerIdentity.connect(
-    server_id="550e8400-...",   # From the dashboard
-    api_key="sk_live_...",
-)
+server = CapiscioMCPServer.connect()
 
-print(identity.did)    # did:web:registry.capisc.io:servers:550e8400-...
-print(identity.badge)  # Current badge JWS (auto-issued)
+print(server.did)    # did:web:registry.capisc.io:servers:550e8400-...
+print(server.badge)  # Current badge JWS (auto-issued)
 ```
 
 ### Using Environment Variables
 
 ```python
-identity = await MCPServerIdentity.from_env()
+server = CapiscioMCPServer.connect()
 ```
 
 | Variable | Required | Description |
@@ -424,6 +417,7 @@ config = VerifyConfig(
 
 Requires `pip install capiscio-mcp[mcp]`:
 
+- `CapiscioMCPServer.connect()` — One-liner: load identity from env and create server
 - `CapiscioMCPServer(name, did, badge, ...)` — FastMCP wrapper with trust enforcement
 - `CapiscioMCPServer.tool(min_trust_level=...)` — Decorator for guarded tools
 - `CapiscioMCPServer.run(transport="stdio")` — Run the server

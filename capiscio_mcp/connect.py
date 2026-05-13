@@ -46,8 +46,6 @@ from cryptography.hazmat.primitives.serialization import (
 
 from capiscio_mcp.keeper import ServerBadgeKeeper
 from capiscio_mcp.events import GuardEventEmitter, set_event_emitter
-from capiscio_mcp.guard import set_pip_config
-from capiscio_mcp.pip import PIPConfig
 from capiscio_mcp.registration import (
     RegistrationError,
     generate_server_keypair,
@@ -280,7 +278,6 @@ class MCPServerIdentity:
         auto_badge: bool = True,
         renewal_threshold: int = 30,
         on_badge_renew: Optional[Callable[[str], None]] = None,
-        pdp_endpoint: Optional[str] = None,
     ) -> "MCPServerIdentity":
         """Connect to CapiscIO and get a fully-configured MCP server identity.
 
@@ -306,10 +303,6 @@ class MCPServerIdentity:
             auto_badge: If ``True``, issue an initial badge and start auto-renewal.
             renewal_threshold: Renew badge this many seconds before expiry.
             on_badge_renew: Optional callback ``(badge: str) -> None`` on renewal.
-            pdp_endpoint: Optional remote PDP URL for org-policy enforcement.
-                Defaults to empty (local OPA bundle evaluation via Go core).
-                Use ``CAPISCIO_PDP_ENDPOINT`` env var or this param only when
-                a remote PDP service is explicitly deployed.
 
         Returns:
             :class:`MCPServerIdentity` with ``.did``, ``.badge``, ``.keys_dir``,
@@ -538,13 +531,15 @@ class MCPServerIdentity:
         if auto_badge:
             badge = await _issue_badge(server_id, effective_api_key, server_url, domain=domain)
             if badge:
+                effective_domain = domain or _derive_domain(server_url)
                 keeper = ServerBadgeKeeper(
                     server_id=server_id,
-                    api_key=api_key,
+                    api_key=effective_api_key,
                     initial_badge=badge,
                     ca_url=server_url,
                     renewal_threshold=renewal_threshold,
                     on_renew=on_badge_renew,
+                    domain=effective_domain,
                 )
                 keeper.start()
             else:
@@ -562,27 +557,6 @@ class MCPServerIdentity:
                 server_id=server_id,
             )
         )
-
-        # Step 7: Auto-configure PDP for org-policy enforcement
-        # Policy evaluation is LOCAL: the Go core fetches the OPA bundle via
-        # CAPISCIO_BUNDLE_URL and evaluates it with its embedded OPA engine.
-        # pdp_endpoint is only needed if a remote PDP is explicitly configured.
-        effective_pdp = (
-            pdp_endpoint
-            or os.environ.get("CAPISCIO_PDP_ENDPOINT")
-            or ""
-        )
-        set_pip_config(
-            PIPConfig(
-                pdp_endpoint=effective_pdp,
-                pep_id=f"mcp-server:{server_id}",
-                workspace=server_id,
-            )
-        )
-        if effective_pdp:
-            logger.info("Remote PDP configured: pdp_endpoint=%s", effective_pdp)
-        else:
-            logger.debug("Using local OPA bundle for policy evaluation")
 
         return cls(
             server_id=server_id,
@@ -605,7 +579,6 @@ class MCPServerIdentity:
         - ``CAPISCIO_API_KEY`` (required)
         - ``CAPISCIO_SERVER_URL`` (optional, default: production)
         - ``CAPISCIO_SERVER_DOMAIN`` (optional, default: hostname from SERVER_URL)
-        - ``CAPISCIO_PDP_ENDPOINT`` (optional — PDP URL for org-policy enforcement)
         - ``CAPISCIO_SERVER_PRIVATE_KEY_PEM`` (optional — PEM-encoded Ed25519
           private key for ephemeral environments; printed on first generation)
 
@@ -674,3 +647,41 @@ class MCPServerIdentity:
             domain=domain or None,
             **kwargs,
         )
+
+    # ------------------------------------------------------------------
+    # Sync convenience methods
+    # ------------------------------------------------------------------
+
+    @classmethod
+    def connect_sync(
+        cls,
+        server_id: str,
+        api_key: Optional[str] = None,
+        **kwargs: Any,
+    ) -> "MCPServerIdentity":
+        """Synchronous version of :meth:`connect`.
+
+        Accepts the same arguments. Runs ``connect()`` in a fresh event loop
+        so callers don't need ``asyncio.run()`` boilerplate.
+
+        Example::
+
+            identity = MCPServerIdentity.connect_sync(
+                server_id=os.environ["CAPISCIO_SERVER_ID"],
+                api_key=os.environ["CAPISCIO_API_KEY"],
+            )
+        """
+        return asyncio.run(cls.connect(server_id, api_key, **kwargs))
+
+    @classmethod
+    def from_env_sync(cls, **kwargs: Any) -> "MCPServerIdentity":
+        """Synchronous version of :meth:`from_env`.
+
+        Reads the same environment variables. Runs ``from_env()`` in a fresh
+        event loop so callers don't need ``asyncio.run()`` boilerplate.
+
+        Example::
+
+            identity = MCPServerIdentity.from_env_sync()
+        """
+        return asyncio.run(cls.from_env(**kwargs))

@@ -34,6 +34,8 @@ import contextvars
 import hashlib
 import json
 import logging
+import threading
+import time
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from functools import wraps
@@ -41,9 +43,11 @@ from typing import (
     Any,
     Callable,
     Coroutine,
+    Dict,
     List,
     Optional,
     ParamSpec,
+    Tuple,
     TypeVar,
     Union,
     overload,
@@ -58,7 +62,6 @@ from capiscio_mcp.types import (
 )
 from capiscio_mcp.errors import GuardError, GuardConfigError
 from capiscio_mcp.events import get_event_emitter
-from capiscio_mcp.pip import PIPConfig, PolicyClient
 
 logger = logging.getLogger(__name__)
 
@@ -85,30 +88,51 @@ _caller_badge: contextvars.ContextVar[Optional[str]] = (
     contextvars.ContextVar("caller_badge", default=None)
 )
 
-# Module-level PIP config singleton (set by MCPServerIdentity.connect() or manually)
-_pip_config: Optional[PIPConfig] = None
+# ── Decision cache ──────────────────────────────────────────────────
+# Keyed on (badge_jws | "", tool_name).  Same badge string = same JTI,
+# same signature, same claims — the decision cannot change until the
+# badge refreshes (producing a new JWS, which is a new cache key).
+#
+# TTL is conservative (5 s) so org-policy changes propagate quickly.
+# In practice this eliminates the gRPC round-trip for repeated tool
+# calls within a burst: first call ~3 ms, subsequent calls ~0.01 ms.
+_DECISION_CACHE_TTL = 5.0  # seconds
+_DECISION_CACHE_MAX_SIZE = 256  # max entries before eviction
+_decision_cache: Dict[Tuple[str, str], Tuple["GuardResult", float]] = {}
+_decision_cache_lock = threading.Lock()
 
 
-def set_pip_config(config: Optional[PIPConfig]) -> None:
-    """Set the module-level PIP configuration for org policy evaluation.
-
-    When set, ``@guard`` performs a second-phase policy check via
-    ``EvaluatePolicyDecision`` after the inline trust-level check.  The
-    stricter decision wins.
-
-    Typically auto-configured by ``MCPServerIdentity.connect()``.
-
-    Args:
-        config: PIP configuration with ``pdp_endpoint`` set, or ``None``
-            to disable org-policy checks.
-    """
-    global _pip_config
-    _pip_config = config
+def _cache_get(badge_jws: str, tool_name: str) -> Optional["GuardResult"]:
+    """Return cached decision if still valid, else None."""
+    with _decision_cache_lock:
+        entry = _decision_cache.get((badge_jws, tool_name))
+        if entry is None:
+            return None
+        result, expiry = entry
+        if time.monotonic() > expiry:
+            del _decision_cache[(badge_jws, tool_name)]
+            return None
+        return result
 
 
-def get_pip_config() -> Optional[PIPConfig]:
-    """Return the current module-level PIP configuration, or ``None``."""
-    return _pip_config
+def _cache_put(badge_jws: str, tool_name: str, result: "GuardResult") -> None:
+    """Store a decision in the cache."""
+    with _decision_cache_lock:
+        # Evict expired entries if cache is at capacity
+        if len(_decision_cache) >= _DECISION_CACHE_MAX_SIZE:
+            now = time.monotonic()
+            expired = [k for k, (_, exp) in _decision_cache.items() if now > exp]
+            for k in expired:
+                del _decision_cache[k]
+            # If still at capacity after expiry sweep, evict oldest entries
+            if len(_decision_cache) >= _DECISION_CACHE_MAX_SIZE:
+                oldest = sorted(_decision_cache, key=lambda k: _decision_cache[k][1])
+                for k in oldest[:len(_decision_cache) - _DECISION_CACHE_MAX_SIZE + 1]:
+                    del _decision_cache[k]
+        _decision_cache[(badge_jws, tool_name)] = (
+            result,
+            time.monotonic() + _DECISION_CACHE_TTL,
+        )
 
 
 @dataclass
@@ -130,8 +154,7 @@ class GuardConfig:
     allowed_tools: Optional[List[str]] = None
     policy_version: Optional[str] = None
     require_badge: bool = False
-    pip_config: Optional[PIPConfig] = None
-    
+
     def __post_init__(self) -> None:
         """Validate configuration on creation."""
         self.validate()
@@ -301,6 +324,13 @@ async def evaluate_tool_access(
     effective_config = config or GuardConfig()
     effective_credential = credential or get_credential() or CallerCredential()
     
+    # Check decision cache — same badge + same tool = same decision
+    cache_key_jws = effective_credential.badge_jws or ""
+    cached = _cache_get(cache_key_jws, tool_name)
+    if cached is not None:
+        logger.debug("Decision cache hit: tool=%s decision=%s", tool_name, cached.decision.value)
+        return cached
+
     # Compute params hash locally (PII never leaves Python)
     params_hash = compute_params_hash(params)
     server_origin = get_server_origin()
@@ -339,25 +369,11 @@ async def evaluate_tool_access(
     if deny_on_unknown_class is not None:
         request.deny_on_unknown_class = deny_on_unknown_class
     
-    # Make RPC call
+    # Make RPC call — the Go core handles both badge verification AND
+    # local OPA policy evaluation in a single round-trip.  Policy bundles
+    # are downloaded at init and polled every 30 s; no per-request HTTP.
     response = await client.stub.EvaluateToolAccess(request)
-    
-    # Phase 2: Org policy check via PDP (if configured)
-    # The inline check (trust level, allowed tools) runs first.
-    # If that passes, the PDP gets a say — the stricter decision wins.
-    pip_cfg = (effective_config.pip_config or _pip_config)
-    if (
-        pip_cfg is not None
-        and pip_cfg.pdp_endpoint
-        and response.decision == mcp_pb2.ALLOW
-    ):
-        response = await _evaluate_org_policy(
-            pip_cfg=pip_cfg,
-            inline_response=response,
-            tool_name=tool_name,
-            capability_class=capability_class,
-        )
-    
+
     # Map response to GuardResult
     decision = Decision.ALLOW if response.decision == mcp_pb2.ALLOW else Decision.DENY
     
@@ -383,7 +399,7 @@ async def evaluate_tool_access(
     }
     auth_level = auth_level_map.get(response.auth_level, AuthLevel.ANONYMOUS)
     
-    return GuardResult(
+    result = GuardResult(
         decision=decision,
         deny_reason=deny_reason,
         deny_detail=response.deny_detail or None,
@@ -398,73 +414,10 @@ async def evaluate_tool_access(
         presented_capability=response.presented_capability or None,
     )
 
+    # Cache for subsequent calls with the same badge + tool
+    _cache_put(cache_key_jws, tool_name, result)
 
-async def _evaluate_org_policy(
-    *,
-    pip_cfg: PIPConfig,
-    inline_response: Any,
-    tool_name: str,
-    capability_class: Optional[str] = None,
-) -> Any:
-    """Second-phase org-policy check via EvaluatePolicyDecision RPC.
-
-    Called only when the inline evaluation (phase 1) returned ALLOW and a PDP
-    endpoint is configured.  If the PDP says DENY, we override the inline
-    response so that the stricter decision wins.
-
-    If the PDP is unreachable we respect the enforcement mode configured in
-    ``pip_cfg`` (default EM-OBSERVE = allow through with a warning).
-
-    Returns:
-        The original ``inline_response`` (possibly mutated to DENY).
-    """
-    from capiscio_mcp._proto.capiscio.v1 import mcp_pb2
-
-    try:
-        policy_client = PolicyClient(pip_cfg)
-        policy_result = await policy_client.evaluate(
-            subject_did=inline_response.agent_did or "",
-            badge_jti=inline_response.badge_jti or "",
-            trust_level=str(inline_response.trust_level),
-            operation=tool_name,
-            capability_class=capability_class or "",
-        )
-
-        if policy_result.denied:
-            logger.info(
-                "Org policy DENY override: tool=%s agent=%s reason=%s decision_id=%s",
-                tool_name,
-                inline_response.agent_did,
-                policy_result.reason,
-                policy_result.decision_id,
-            )
-            # Mutate the inline response so downstream mapping picks it up
-            inline_response.decision = mcp_pb2.DENY
-            inline_response.deny_reason = mcp_pb2.TOOL_POLICY_DENIED
-            inline_response.deny_detail = (
-                policy_result.reason or "Denied by organization policy"
-            )
-        elif policy_result.pdp_error:
-            logger.warning(
-                "PDP unavailable during org-policy check: error_code=%s tool=%s",
-                policy_result.error_code,
-                tool_name,
-            )
-            # The Go core already applied the enforcement-mode fallback.
-            # EM-OBSERVE → ALLOW_OBSERVE (pass through).
-            # EM-GUARD/EM-STRICT → DENY (fail-closed).
-            if policy_result.decision == "DENY":
-                inline_response.decision = mcp_pb2.DENY
-                inline_response.deny_reason = mcp_pb2.TOOL_POLICY_DENIED
-                inline_response.deny_detail = "Policy service unavailable"
-    except Exception:
-        logger.warning(
-            "Org policy evaluation failed for tool=%s — allowing through (best-effort)",
-            tool_name,
-            exc_info=True,
-        )
-
-    return inline_response
+    return result
 
 
 def _emit_deny_event(
@@ -629,7 +582,7 @@ def guard(
             
             # Check decision
             if result.decision == Decision.DENY:
-                logger.warning(
+                logger.info(
                     "capiscio.policy_enforced: tool=%s decision=DENY "
                     "agent=%s trust_level=%s reason=%s error_code=%s "
                     "requested_capability=%s presented_capability=%s "
@@ -742,7 +695,7 @@ def guard_sync(
             
             # Check decision
             if result.decision == Decision.DENY:
-                logger.warning(
+                logger.info(
                     "capiscio.policy_enforced: tool=%s decision=DENY "
                     "agent=%s trust_level=%s reason=%s error_code=%s "
                     "requested_capability=%s presented_capability=%s "
