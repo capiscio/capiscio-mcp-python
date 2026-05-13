@@ -278,6 +278,7 @@ class MCPServerIdentity:
         auto_badge: bool = True,
         renewal_threshold: int = 30,
         on_badge_renew: Optional[Callable[[str], None]] = None,
+        pdp_endpoint: Optional[str] = None,
     ) -> "MCPServerIdentity":
         """Connect to CapiscIO and get a fully-configured MCP server identity.
 
