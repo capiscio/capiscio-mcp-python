@@ -682,8 +682,18 @@ class CapiscioMCPClient:
         self.min_trust_level = min_trust_level
         self.fail_on_unverified = fail_on_unverified
         self.require_pop = require_pop
-        self.verify_config = verify_config or VerifyConfig(min_trust_level=min_trust_level)
         self._extra_env = env or {}
+
+        # For stdio transports (subprocess-based), origin binding is not
+        # applicable — there is no HTTP origin to bind against.  Auto-skip
+        # the check unless the caller provided an explicit verify_config.
+        if verify_config is not None:
+            self.verify_config = verify_config
+        else:
+            self.verify_config = VerifyConfig(
+                min_trust_level=min_trust_level,
+                skip_origin_binding=(command is not None),
+            )
 
         self._credential = CallerCredential(
             badge_jws=badge,
