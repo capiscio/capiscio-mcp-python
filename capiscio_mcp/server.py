@@ -155,7 +155,16 @@ async def verify_server(
     
     # Full verification path: DID + badge requires gRPC validation
     # Get core client
-    client = await CoreClient.get_instance()
+    try:
+        client = await CoreClient.get_instance()
+    except Exception as exc:
+        logger.warning("Cannot reach capiscio-core for server verification: %s", exc)
+        return VerifyResult(
+            state=ServerState.UNVERIFIED_ORIGIN,
+            server_did=server_did,
+            error_code=ServerErrorCode.BADGE_INVALID,
+            error_detail=f"capiscio-core unavailable: {exc}",
+        )
     
     # Import proto
     from capiscio_mcp._proto.capiscio.v1 import mcp_pb2
@@ -176,7 +185,16 @@ async def verify_server(
     )
     
     # Make RPC call
-    response = await client.stub.VerifyServerIdentity(request)
+    try:
+        response = await client.stub.VerifyServerIdentity(request)
+    except Exception as exc:
+        logger.warning("gRPC call to VerifyServerIdentity failed: %s", exc)
+        return VerifyResult(
+            state=ServerState.UNVERIFIED_ORIGIN,
+            server_did=server_did,
+            error_code=ServerErrorCode.BADGE_INVALID,
+            error_detail=f"verification RPC failed: {exc}",
+        )
     
     # Map response state
     state_map = {

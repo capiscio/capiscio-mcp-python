@@ -144,6 +144,21 @@ def _derive_domain(url: str) -> str:
     return host
 
 
+def _derive_did_web(server_url: str, server_id: str) -> str:
+    """Derive the did:web identity for a registered server.
+
+    Matches the Go CA's did.NewAgentDID(domain, agentID) output:
+        did:web:<domain>:agents:<uuid>
+
+    In CA-connected mode the badge subject is always a did:web — the server
+    must present the same DID for identity verification to pass.
+    """
+    domain = _derive_domain(server_url)
+    # did:web spec encodes colons in the domain as %3A
+    encoded_domain = domain.replace(":", "%3A")
+    return f"did:web:{encoded_domain}:agents:{server_id}"
+
+
 def _issue_badge_sync(
     server_id: str,
     api_key: str,
@@ -515,6 +530,18 @@ class MCPServerIdentity:
         # ------------------------------------------------------------------
         if is_new_identity:
             _log_key_capture_hint(server_id, private_key_pem)
+
+        # ------------------------------------------------------------------
+        # Step 4: Derive did:web identity (CA-connected mode)
+        # ------------------------------------------------------------------
+        # The CA issues badges with sub = did:web:{domain}:agents:{uuid}.
+        # For identity verification to pass, the server must present the same
+        # did:web — NOT the did:key from key generation.  The keypair is still
+        # used for PoP signing, but the identity DID is always did:web when
+        # connected to a CA.
+        did = _derive_did_web(server_url, server_id)
+        did_file.write_text(did)
+        logger.info("Server identity DID (CA-connected): %s", did)
 
         # Update bundle URL if registration yielded a new/different org_id.
         # (API key and cached bundle URL were already set in Step 1.5 before
