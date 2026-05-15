@@ -7,6 +7,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [2.7.1] - 2026-05-15
+
+### Fixed
+- Use `did:web` identity in CA-connected mode instead of `did:key` — fixes `DID_MISMATCH` during server verification (#38)
+- Auto-skip origin binding for stdio (subprocess) transports — fixes `ORIGIN_MISMATCH` for `CapiscioMCPClient` with `command=` (#38)
+- Graceful gRPC error handling in `verify_server()` — returns `UNVERIFIED_ORIGIN` instead of crashing when capiscio-core is unavailable (#38)
+
 ## [2.7.0] - 2026-05-13
 
 ### Added
