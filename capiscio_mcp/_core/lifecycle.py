@@ -398,7 +398,20 @@ class ProcessSupervisor:
             if not self._running:
                 break  # Intentional shutdown
             
-            logger.warning(f"capiscio-core exited with code {return_code}")
+            # Capture stderr for diagnostics
+            stderr_text = ""
+            if self._process.stderr:
+                try:
+                    stderr_bytes = await self._process.stderr.read()
+                    stderr_text = stderr_bytes.decode(errors="replace").strip()
+                except Exception:
+                    pass
+            
+            logger.warning(
+                "capiscio-core exited with code %d%s",
+                return_code,
+                f": {stderr_text}" if stderr_text else "",
+            )
             
             if self._restart_count >= self.max_restarts:
                 logger.error(f"Max restarts ({self.max_restarts}) exceeded")

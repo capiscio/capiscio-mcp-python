@@ -8,6 +8,7 @@ import pytest
 
 from capiscio_mcp.connect import (
     MCPServerIdentity,
+    _derive_did_web,
     _issue_badge_sync,
     _load_private_key_pem,
     _log_key_capture_hint,
@@ -20,7 +21,9 @@ from capiscio_mcp.keeper import ServerBadgeKeeper
 
 SERVER_ID = "550e8400-e29b-41d4-a716-446655440000"
 API_KEY = "sk_test_abc123"
+TEST_SERVER_URL = "http://localhost:8080"
 FAKE_DID = "did:key:z6MkhaXgBZDvotDkL5257faiztiGiC2QtKLGpbnnEGta2doK"
+FAKE_DID_WEB = _derive_did_web(TEST_SERVER_URL, SERVER_ID)
 FAKE_BADGE = "eyJhbGciOiJFZERTQSJ9.eyJleHAiOjk5OTk5OTk5OTl9.fakesig"
 FAKE_PRIV_KEY_PEM = "-----BEGIN PRIVATE KEY-----\nfake\n-----END PRIVATE KEY-----\n"
 FAKE_PUB_KEY_PEM = "-----BEGIN PUBLIC KEY-----\nfake\n-----END PUBLIC KEY-----\n"
@@ -188,11 +191,12 @@ class TestMCPServerIdentityConnect:
             identity = await MCPServerIdentity.connect(
                 server_id=SERVER_ID,
                 api_key=API_KEY,
-                server_url="http://localhost:8080",
+                server_url=TEST_SERVER_URL,
                 keys_dir=tmp_keys_dir,
             )
 
-        assert identity.did == FAKE_DID
+        # connect() derives did:web from server_url + server_id (Step 4)
+        assert identity.did == FAKE_DID_WEB
         assert identity.server_id == SERVER_ID
         assert identity.api_key == API_KEY
         assert identity.badge == FAKE_BADGE
@@ -222,13 +226,14 @@ class TestMCPServerIdentityConnect:
             identity = await MCPServerIdentity.connect(
                 server_id=SERVER_ID,
                 api_key=API_KEY,
-                server_url="http://localhost:8080",
+                server_url=TEST_SERVER_URL,
                 keys_dir=tmp_keys_dir,
             )
 
         # Should NOT have regenerated keys
         mock_gen.assert_not_called()
-        assert identity.did == FAKE_DID
+        # connect() derives did:web from server_url + server_id (Step 4)
+        assert identity.did == FAKE_DID_WEB
 
     async def test_connect_no_badge_when_auto_badge_false(self, tmp_keys_dir):
         """connect(auto_badge=False) should skip badge issuance."""
@@ -272,12 +277,14 @@ class TestMCPServerIdentityConnect:
             identity = await MCPServerIdentity.connect(
                 server_id=SERVER_ID,
                 api_key=API_KEY,
+                server_url=TEST_SERVER_URL,
                 keys_dir=tmp_keys_dir,
             )
 
         assert identity.badge is None
         assert identity._keeper is None
-        assert identity.did == FAKE_DID
+        # connect() derives did:web from server_url + server_id (Step 4)
+        assert identity.did == FAKE_DID_WEB
 
     async def test_connect_uses_env_var_private_key(self, tmp_keys_dir):
         """connect() should load identity from CAPISCIO_SERVER_PRIVATE_KEY_PEM."""
@@ -292,16 +299,18 @@ class TestMCPServerIdentityConnect:
             identity = await MCPServerIdentity.connect(
                 server_id=SERVER_ID,
                 api_key=API_KEY,
+                server_url=TEST_SERVER_URL,
                 keys_dir=tmp_keys_dir,
             )
 
         # Should NOT have generated a new keypair
         mock_gen.assert_not_called()
-        assert identity.did == real_did
+        # connect() derives did:web from server_url + server_id (Step 4)
+        assert identity.did == FAKE_DID_WEB
         # Should have persisted key to disk
         assert (tmp_keys_dir / "private_key.pem").exists()
         assert (tmp_keys_dir / "public_key.pem").exists()
-        assert (tmp_keys_dir / "did.txt").read_text() == real_did
+        assert (tmp_keys_dir / "did.txt").read_text() == FAKE_DID_WEB
 
     async def test_connect_env_var_takes_precedence_over_local_file(self, tmp_keys_dir):
         """Env var key should override a different key on disk."""
@@ -321,11 +330,13 @@ class TestMCPServerIdentityConnect:
             identity = await MCPServerIdentity.connect(
                 server_id=SERVER_ID,
                 api_key=API_KEY,
+                server_url=TEST_SERVER_URL,
                 keys_dir=tmp_keys_dir,
             )
 
         mock_gen.assert_not_called()
-        assert identity.did == real_did  # env var DID, not FAKE_DID
+        # connect() derives did:web from server_url + server_id (Step 4)
+        assert identity.did == FAKE_DID_WEB
 
     async def test_connect_logs_capture_hint_on_new_generation(self, tmp_keys_dir):
         """connect() should log a capture hint when generating a new identity."""
