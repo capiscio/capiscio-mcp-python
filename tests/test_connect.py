@@ -277,6 +277,7 @@ class TestMCPServerIdentityConnect:
             identity = await MCPServerIdentity.connect(
                 server_id=SERVER_ID,
                 api_key=API_KEY,
+                server_url=TEST_SERVER_URL,
                 keys_dir=tmp_keys_dir,
             )
 
