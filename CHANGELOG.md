@@ -95,5 +95,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Python 3.10+
 - Optional: mcp >= 1.0 for MCP SDK integration
 
-[Unreleased]: https://github.com/capiscio/capiscio-mcp-python/compare/v0.1.0...HEAD
+[Unreleased]: https://github.com/capiscio/capiscio-mcp-python/compare/v2.7.1...HEAD
+[2.7.1]: https://github.com/capiscio/capiscio-mcp-python/compare/v2.7.0...v2.7.1
+[2.7.0]: https://github.com/capiscio/capiscio-mcp-python/compare/v0.1.0...v2.7.0
 [0.1.0]: https://github.com/capiscio/capiscio-mcp-python/releases/tag/v0.1.0
