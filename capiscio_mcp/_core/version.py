@@ -16,8 +16,9 @@ from typing import Tuple
 MCP_VERSION = "0.1.0"
 
 # Compatible capiscio-core versions (internal constraint)
-# 2.7.0 is required for local OPA policy evaluation (PDP wiring).
-CORE_MIN_VERSION = "2.7.0"
+# 2.7.1 is required: fixes nil-pointer panic in VerifyServerIdentity
+# when badgeVerifier is not initialized (verifier.go:162).
+CORE_MIN_VERSION = "2.7.1"
 CORE_MAX_VERSION = "3.0.0"  # exclusive
 
 # Proto schema version for wire compatibility
