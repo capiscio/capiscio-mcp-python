@@ -691,6 +691,7 @@ def guard_sync(
                 try:
                     result = future.result(timeout=30.0)
                 except (TimeoutError, concurrent.futures.TimeoutError):
+                    future.cancel()
                     raise GuardError(
                         reason=DenyReason.INTERNAL_ERROR,
                         detail=(
