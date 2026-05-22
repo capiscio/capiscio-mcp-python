@@ -688,16 +688,17 @@ def guard_sync(
                 # We're in an async context, use run_coroutine_threadsafe
                 import concurrent.futures
                 future = asyncio.run_coroutine_threadsafe(run_eval(), loop)
+                _GUARD_SYNC_TIMEOUT = 30.0
                 try:
-                    result = future.result(timeout=30.0)
+                    result = future.result(timeout=_GUARD_SYNC_TIMEOUT)
                 except (TimeoutError, concurrent.futures.TimeoutError):
                     future.cancel()
                     raise GuardError(
                         reason=DenyReason.INTERNAL_ERROR,
                         detail=(
-                            "Guard evaluation timed out. This usually means the "
-                            "guard is being called outside of an MCP request context "
-                            "or the gRPC core server is not responding."
+                            f"Guard evaluation timed out after {_GUARD_SYNC_TIMEOUT}s. "
+                            "This usually means the guard is being called outside of "
+                            "an MCP request context or the gRPC core server is not responding."
                         ),
                     )
             else:
