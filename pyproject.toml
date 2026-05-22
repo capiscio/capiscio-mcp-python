@@ -63,6 +63,9 @@ testpaths = ["tests"]
 python_files = ["test_*.py"]
 python_classes = ["Test*"]
 python_functions = ["test_*"]
+markers = [
+    "integration: live integration tests requiring capiscio-core and/or capiscio-server",
+]
 
 [tool.coverage.run]
 source = ["capiscio_mcp"]

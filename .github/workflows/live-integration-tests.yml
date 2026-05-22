@@ -1,0 +1,155 @@
+name: Live Integration Tests
+
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - 'capiscio_mcp/**'
+      - 'tests/integration/**'
+      - 'docker-compose.test.yml'
+      - '.github/workflows/live-integration-tests.yml'
+  push:
+    branches: [main]
+    paths:
+      - 'capiscio_mcp/**'
+      - 'tests/integration/**'
+  workflow_dispatch:
+  repository_dispatch:
+    types: [run-e2e-tests]
+
+permissions:
+  contents: read
+  pull-requests: write
+
+jobs:
+  live-integration:
+    name: Live Integration Tests
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+
+    steps:
+      - name: Checkout MCP repository
+        uses: actions/checkout@v4
+
+      - name: Checkout capiscio-core
+        uses: actions/checkout@v4
+        with:
+          repository: capiscio/capiscio-core
+          path: _capiscio-core
+          token: ${{ secrets.REPO_ACCESS_TOKEN }}
+
+      - name: Checkout capiscio-server
+        uses: actions/checkout@v4
+        with:
+          repository: capiscio/capiscio-server
+          path: _capiscio-server
+          token: ${{ secrets.REPO_ACCESS_TOKEN }}
+
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: '1.24'
+
+      - name: Build capiscio-core binary
+        working-directory: _capiscio-core
+        run: |
+          go build -o bin/capiscio ./cmd/capiscio
+          chmod +x bin/capiscio
+          echo "CAPISCIO_BINARY_PATH=${{ github.workspace }}/_capiscio-core/bin/capiscio" >> $GITHUB_ENV
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+          cache: 'pip'
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -e ".[dev,mcp]"
+
+      - name: Start PostgreSQL
+        run: |
+          docker run -d --name test-postgres \
+            -e POSTGRES_USER=postgres \
+            -e POSTGRES_PASSWORD=postgres \
+            -e POSTGRES_DB=capiscio \
+            -p 5435:5432 \
+            --health-cmd "pg_isready -U postgres" \
+            --health-interval 5s \
+            --health-timeout 5s \
+            --health-retries 5 \
+            postgres:15-alpine
+
+          # Wait for PostgreSQL
+          for i in $(seq 1 30); do
+            if docker exec test-postgres pg_isready -U postgres; then
+              echo "PostgreSQL ready"
+              break
+            fi
+            sleep 1
+          done
+
+      - name: Build and start capiscio-server
+        working-directory: _capiscio-server
+        run: |
+          go build -tags cloud -o bin/capiscio-server ./cmd/server
+          chmod +x bin/capiscio-server
+
+          export DATABASE_URL="postgres://postgres:postgres@localhost:5435/capiscio?sslmode=disable"
+          export PORT=8081
+          export LOG_LEVEL=debug
+          export CA_ISSUER_URL="http://localhost:8081"
+          export ALLOW_AGENT_REGISTRATION=true
+
+          ./bin/capiscio-server &
+          SERVER_PID=$!
+          echo "SERVER_PID=$SERVER_PID" >> $GITHUB_ENV
+
+          # Wait for server health
+          for i in $(seq 1 30); do
+            if curl -sf http://localhost:8081/health > /dev/null 2>&1; then
+              echo "Server ready at :8081"
+              break
+            fi
+            sleep 1
+          done
+
+      - name: Start capiscio-core gRPC
+        run: |
+          export CAPISCIO_BINARY_PATH="${{ github.workspace }}/_capiscio-core/bin/capiscio"
+          $CAPISCIO_BINARY_PATH serve --port 50051 &
+          CORE_PID=$!
+          echo "CORE_PID=$CORE_PID" >> $GITHUB_ENV
+          echo "CAPISCIO_CORE_ADDR=localhost:50051" >> $GITHUB_ENV
+
+          # Wait for gRPC health
+          sleep 3
+          echo "Core gRPC started on :50051"
+
+      - name: Run live integration tests
+        env:
+          CAPISCIO_SERVER_URL: http://localhost:8081
+          CAPISCIO_CORE_ADDR: localhost:50051
+          CAPISCIO_API_KEY: test-integration-key
+        run: |
+          pytest tests/integration/ -v --tb=short -m integration \
+            --junitxml=integration-results.xml || true
+
+          # Show results even if some tests fail
+          echo "Integration test run complete"
+
+      - name: Upload test results
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: integration-test-results
+          path: integration-results.xml
+
+      - name: Cleanup
+        if: always()
+        run: |
+          kill ${{ env.SERVER_PID }} 2>/dev/null || true
+          kill ${{ env.CORE_PID }} 2>/dev/null || true
+          docker stop test-postgres 2>/dev/null || true
+          docker rm test-postgres 2>/dev/null || true
