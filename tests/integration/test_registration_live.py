@@ -50,8 +50,8 @@ class TestGenerateServerKeypairLive:
         except Exception as e:
             pytest.skip(f"Core keygen not available: {e}")
 
-        assert "private_key" in result or hasattr(result, "private_key_pem")
-        assert "public_key" in result or hasattr(result, "public_key_pem")
+        assert "private_key_pem" in result or "private_key" in result
+        assert "public_key_pem" in result or "public_key" in result
 
     async def test_generate_keypair_unique(self):
         """Each call should generate a unique keypair."""
@@ -61,8 +61,8 @@ class TestGenerateServerKeypairLive:
         except Exception as e:
             pytest.skip(f"Core keygen not available: {e}")
 
-        key1 = result1.get("public_key") or getattr(result1, "public_key_pem", None)
-        key2 = result2.get("public_key") or getattr(result2, "public_key_pem", None)
+        key1 = result1.get("public_key_pem") or result1.get("public_key")
+        key2 = result2.get("public_key_pem") or result2.get("public_key")
         assert key1 != key2
 
 
@@ -117,6 +117,11 @@ class TestRegisterServerIdentityLive:
                 pytest.skip(f"Auth error: {e}")
             if "409" not in str(e):
                 raise
+            # 409 Conflict is expected for idempotent re-registration
+            return
+
+        # If the second call succeeded without error, it should still report success
+        assert result is not None
 
     async def test_register_missing_api_key_rejected(self, server_url):
         """Registration without a valid API key should fail."""
@@ -149,9 +154,11 @@ class TestSetupServerIdentityLive:
                 api_key=api_key,
                 ca_url=server_url,
             )
+        except (ConnectionError, TimeoutError, OSError) as e:
+            pytest.skip(f"Setup not available: {e}")
         except Exception as e:
             if "401" in str(e) or "403" in str(e):
                 pytest.skip(f"Auth error: {e}")
-            pytest.skip(f"Setup not available: {e}")
+            raise
 
         assert result is not None

@@ -118,7 +118,7 @@ jobs:
       - name: Start capiscio-core gRPC
         run: |
           export CAPISCIO_BINARY_PATH="${{ github.workspace }}/_capiscio-core/bin/capiscio"
-          $CAPISCIO_BINARY_PATH serve --port 50051 &
+          $CAPISCIO_BINARY_PATH rpc --address localhost:50051 &
           CORE_PID=$!
           echo "CORE_PID=$CORE_PID" >> $GITHUB_ENV
           echo "CAPISCIO_CORE_ADDR=localhost:50051" >> $GITHUB_ENV
@@ -134,9 +134,8 @@ jobs:
           CAPISCIO_API_KEY: test-integration-key
         run: |
           pytest tests/integration/ -v --tb=short -m integration \
-            --junitxml=integration-results.xml || true
+            --junitxml=integration-results.xml
 
-          # Show results even if some tests fail
           echo "Integration test run complete"
 
       - name: Upload test results

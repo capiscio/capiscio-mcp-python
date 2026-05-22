@@ -62,7 +62,7 @@ class TestMCPServerIdentityConnect:
                 assert identity.did is not None
                 assert identity.did.startswith("did:")
 
-                await identity.close()
+                identity.close()
             except CoreConnectionError:
                 pytest.skip("Core connection failed — binary may not support this flow")
 
@@ -85,7 +85,7 @@ class TestMCPServerIdentityConnect:
 
                 assert identity.did is not None
 
-                await identity.close()
+                identity.close()
             except CoreConnectionError:
                 pytest.skip("Core connection failed")
             except Exception as e:
@@ -105,7 +105,7 @@ class TestMCPServerIdentityConnect:
                     auto_badge=False,
                 )
                 did1 = identity1.did
-                await identity1.close()
+                identity1.close()
 
                 identity2 = await MCPServerIdentity.connect(
                     server_id="test-integration-idempotent",
@@ -115,7 +115,7 @@ class TestMCPServerIdentityConnect:
                     auto_badge=False,
                 )
                 did2 = identity2.did
-                await identity2.close()
+                identity2.close()
 
                 assert did1 == did2
             except CoreConnectionError:
@@ -126,19 +126,20 @@ class TestMCPServerIdentityConnect:
                 raise
 
     async def test_connect_context_manager(self, server_url, api_key):
-        """MCPServerIdentity should work as an async context manager."""
+        """MCPServerIdentity should work as a context manager."""
         with tempfile.TemporaryDirectory() as keys_dir:
             try:
-                async with MCPServerIdentity.connect(
+                identity = await MCPServerIdentity.connect(
                     server_id="test-integration-ctx",
                     api_key=api_key,
                     server_url=server_url,
                     keys_dir=keys_dir,
                     auto_badge=False,
-                ) as identity:
+                )
+                with identity:
                     assert identity.did is not None
-            except (CoreConnectionError, TypeError):
-                pytest.skip("Context manager or core not available")
+            except CoreConnectionError:
+                pytest.skip("Core connection failed")
             except Exception as e:
                 if "401" in str(e) or "403" in str(e):
                     pytest.skip(f"Auth error: {e}")
