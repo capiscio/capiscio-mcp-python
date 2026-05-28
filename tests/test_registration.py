@@ -56,8 +56,8 @@ class TestKeyGenerationSuccess:
         mock_response.did_key = "did:key:z6MkTestKeyHere"
         mock_response.error_message = ""
         
-        mock_stub = AsyncMock()
-        mock_stub.GenerateKeyPair.return_value = mock_response
+        mock_stub = MagicMock()
+        mock_stub.GenerateKeyPair = AsyncMock(return_value=mock_response)
 
         with patch("capiscio_mcp._core.client.CoreClient") as mock_client_class:
             mock_instance = AsyncMock()
@@ -203,8 +203,8 @@ class TestSetupServerIdentity:
         mock_key_response.did_key = "did:key:z6MkGenerated"
         mock_key_response.error_message = ""
         
-        mock_stub = AsyncMock()
-        mock_stub.GenerateKeyPair.return_value = mock_key_response
+        mock_stub = MagicMock()
+        mock_stub.GenerateKeyPair = AsyncMock(return_value=mock_key_response)
 
         with patch("capiscio_mcp._core.client.CoreClient") as mock_client_class:
             mock_instance = AsyncMock()
@@ -519,8 +519,8 @@ class TestKeyGenerationWithErrorMessage:
         mock_response.did_key = ""
         mock_response.error_message = "Key generation failed: invalid algorithm"
         
-        mock_stub = AsyncMock()
-        mock_stub.GenerateKeyPair.return_value = mock_response
+        mock_stub = MagicMock()
+        mock_stub.GenerateKeyPair = AsyncMock(return_value=mock_response)
 
         with patch("capiscio_mcp._core.client.CoreClient") as mock_client_class:
             mock_instance = AsyncMock()
@@ -554,8 +554,8 @@ class TestOutputDirSaving:
         mock_response.did_key = "did:key:z6MkSaved"
         mock_response.error_message = ""
         
-        mock_stub = AsyncMock()
-        mock_stub.GenerateKeyPair.return_value = mock_response
+        mock_stub = MagicMock()
+        mock_stub.GenerateKeyPair = AsyncMock(return_value=mock_response)
 
         with patch("capiscio_mcp._core.client.CoreClient") as mock_client_class:
             mock_instance = AsyncMock()
@@ -627,8 +627,8 @@ class TestSetupServerIdentityErrors:
         mock_key_response.did_key = "did:key:z6MkGenKey"
         mock_key_response.error_message = ""
         
-        mock_stub = AsyncMock()
-        mock_stub.GenerateKeyPair.return_value = mock_key_response
+        mock_stub = MagicMock()
+        mock_stub.GenerateKeyPair = AsyncMock(return_value=mock_key_response)
 
         with patch("capiscio_mcp._core.client.CoreClient") as mock_client_class:
             mock_instance = AsyncMock()
