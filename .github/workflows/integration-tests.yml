@@ -28,6 +28,7 @@ jobs:
     name: Integration Tests with capiscio-core
     runs-on: ubuntu-latest
     timeout-minutes: 15
+    continue-on-error: true  # Don't block PRs - integration tests require secrets/infrastructure
     
     steps:
       - name: Checkout MCP repository
